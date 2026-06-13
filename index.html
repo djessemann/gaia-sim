@@ -78,7 +78,7 @@
     image-rendering:pixelated;image-rendering:crisp-edges;}
   #scan{position:absolute;inset:0;pointer-events:none;opacity:.18;
     background:repeating-linear-gradient(to bottom,rgba(0,0,0,.5) 0 1px,transparent 1px 3px);}
-  #layers{position:absolute;top:7px;left:50%;transform:translateX(-50%);z-index:5;
+  #layers{position:absolute;top:7px;left:7px;z-index:5;
     display:flex;background:var(--panel);padding:3px;box-shadow:inset 2px 2px 0 var(--hi), inset -2px -2px 0 var(--lo);}
   .lay{background:var(--panel);color:var(--txt-dim);border:0;height:30px;padding:0 10px;
     font-family:"VT323",monospace;font-size:17px;letter-spacing:.04em;}
@@ -106,6 +106,32 @@
   .fchip .fe{font-size:19px;line-height:1;}
   .fchip .fn{font-size:13px;line-height:1;letter-spacing:.02em;}
   .fchip.on{background:var(--cyan);color:var(--void);box-shadow:inset 2px 2px 0 var(--lo), inset -2px -2px 0 var(--hi);}
+
+  /* BIOME PORTRAIT — current dominant lifeform (SimEarth-style window) */
+  #biowin{position:absolute;right:7px;top:7px;z-index:5;display:none;align-items:center;gap:7px;
+    background:rgba(12,12,30,.85);padding:4px 8px 4px 4px;box-shadow:inset 2px 2px 0 var(--hi), inset -2px -2px 0 var(--lo);}
+  #biowin .bi{width:36px;height:36px;display:flex;align-items:center;justify-content:center;font-size:25px;flex:0 0 auto;
+    background:var(--lcd);box-shadow:inset 2px 2px 0 var(--lo), inset -2px -2px 0 var(--hi);}
+  #biowin .bx{min-width:0;}
+  #biowin .bx b{display:block;font-size:17px;color:var(--cyan);line-height:1.05;white-space:nowrap;}
+  #biowin .bx small{font-size:13px;color:var(--txt-dim);letter-spacing:.03em;}
+
+  /* EVOLUTION MILESTONE CARD */
+  #flash{position:absolute;inset:0;z-index:14;background:#fff;opacity:0;pointer-events:none;}
+  #flash.go{animation:flashA .5s steps(5,end) 1;}
+  @keyframes flashA{0%{opacity:0}18%{opacity:.45}100%{opacity:0}}
+  #evo{position:absolute;left:50%;top:44%;transform:translate(-50%,-50%) scale(.55);z-index:15;
+    min-width:226px;max-width:88%;background:var(--panel);text-align:center;padding:0 0 13px;
+    opacity:0;pointer-events:none;
+    box-shadow:inset 3px 3px 0 var(--hi), inset -3px -3px 0 var(--lo), 0 0 0 3px var(--void), 7px 7px 0 rgba(0,0,0,.45);
+    transition:opacity .12s steps(2,end), transform .2s steps(4,end);}
+  #evo.show{opacity:1;transform:translate(-50%,-50%) scale(1);pointer-events:auto;}
+  #evo .et{font-family:"Press Start 2P";font-size:9px;color:var(--void);background:var(--fam,#ffe14d);
+    padding:7px 8px;letter-spacing:.05em;}
+  #evo .ei{font-size:46px;line-height:1;margin:13px 0 5px;filter:drop-shadow(2px 2px 0 var(--lo));}
+  #evo .en{font-family:"Press Start 2P";font-size:14px;color:var(--fam,#ffe14d);text-shadow:2px 2px 0 var(--lo);margin-bottom:8px;letter-spacing:.02em;}
+  #evo .ed{font-size:18px;color:var(--txt-dim);line-height:1.2;padding:0 16px;}
+  #evo .ee{font-size:14px;color:var(--cyan);margin-top:8px;letter-spacing:.1em;}
 
   /* CONSOLE LINE */
   #console{flex:0 0 auto;display:flex;align-items:stretch;gap:5px;padding:5px 6px;background:var(--panel);}
@@ -224,7 +250,10 @@
       <button class="lay" data-layer="life">LIFE</button>
       <button class="lay" data-layer="air">AIR</button>
     </div>
+    <div id="biowin"><div class="bi"></div><div class="bx"></div></div>
     <div id="lifeKey"></div>
+    <div id="flash"></div>
+    <div id="evo"></div>
     <div id="toast"></div>
     <div id="faunaBar"></div>
   </div>
@@ -291,6 +320,9 @@ const bio=new Float32Array(N),lcl=new Uint8Array(N),cloud=new Float32Array(N),se
 const CLASSES=["Lifeless","Microbes","Eukaryotes","Soft-bodied","Arthropods","Fish","Amphibians","Reptiles","Dinosaurs","Mammals","Sentient"];
 const CLASS_DESC=["sterile rock & sea","first microbial mats","complex cells in the sea","jellies & worms","shelled, jointed life","backbones in the ocean","first lungs on land","scaled colonizers","the great saurians","warm-blooded & clever","tool-makers awaken"];
 const TECH_AGES=["Stone","Bronze","Iron","Industrial","Atomic","Information","Nanotech"];
+
+/* per-class emoji, used on the evolution milestone card & biome portrait */
+const CLASS_ICON=["·","🦠","🧫","🪼","🦐","🐟","🐸","🦎","🦕","🐘","🧠"];
 
 /* per-class O₂ floor (%), indexed by life class */
 const O2_NEED=[0,0,1,3,6,8,10,12,14,16,18];
@@ -428,7 +460,7 @@ function lifeStep(dt){
   if(!G.abiogenesis){
     if(G.avgTemp>0&&G.avgTemp<70&&G.o2<6&&Math.random()<0.004*dt){
       for(let tries=0;tries<40;tries++){const i=(Math.random()*N)|0;
-        if(alt[i]<0&&temp[i]>2&&temp[i]<75){bio[i]=0.25;lcl[i]=1;G.abiogenesis=true;G.maxClass=1;toast("Abiogenesis — life stirs in the warm sea");break;}}}
+        if(alt[i]<0&&temp[i]>2&&temp[i]<75){bio[i]=0.25;lcl[i]=1;G.abiogenesis=true;G.maxClass=1;if(lastClass<1)lastClass=1;milestone(1,"LIFE BEGINS");break;}}}
     G.biomass=sumBio();return;
   }
   const o2=G.o2,o2Need=O2_NEED;
@@ -453,7 +485,7 @@ function lifeStep(dt){
   G.biomass=sumBio();
 }
 function sumBio(){let s=0;for(let i=0;i<N;i++) s+=bio[i];return s/N;}
-function announceClass(c){if(c<=lastClass)return;lastClass=c;toast("Evolution → "+CLASSES[c]+" — "+CLASS_DESC[c]);if(c===10)maybeStartCiv();}
+function announceClass(c){if(c<=lastClass)return;lastClass=c;milestone(c);if(c===10)maybeStartCiv();}
 function maybeStartCiv(){if(G.civ.on)return;
   for(let i=0;i<N;i++) if(lcl[i]>=10&&alt[i]>=G.seaLevel&&temp[i]>0&&temp[i]<35){
     G.civ.on=true;G.civ.tech=0;G.civ.pop=0.04;G.civ.age=0;G.civ.mood=1;G.civ.cities=[{x:i%W,y:(i/W)|0}];
@@ -488,16 +520,18 @@ const off=document.createElement('canvas');off.width=W;off.height=H;
 const octx=off.getContext('2d'),img=octx.createImageData(W,H),pxd=img.data;
 function setPx(i,r,g,b){const p=i*4;pxd[p]=r;pxd[p+1]=g;pxd[p+2]=b;pxd[p+3]=255;}
 function mix(c1,c2,t){return[lerp(c1[0],c2[0],t),lerp(c1[1],c2[1],t),lerp(c1[2],c2[2],t)];}
+const BAYER4=[0,8,2,10,12,4,14,6,3,11,1,9,15,7,13,5];
 function renderTerrain(){
-  for(let i=0;i<N;i++){const a=alt[i],t=temp[i],v=bio[i],s=seed[i];let c;
-    if(a<G.seaLevel){ if(t<-2) c=[200,216,248]; else {const d=clamp(-a,0,1);c=mix([56,112,200],[16,24,104],d);} }
+  for(let i=0;i<N;i++){const a=alt[i],t=temp[i],v=bio[i],s=seed[i],x=i%W,y=(i/W)|0;let c;
+    if(a<G.seaLevel){ if(t<-2) c=[200,216,248]; else {const d=clamp(-a,0,1);
+      const band=Math.min(3,(d*3.999)|0);c=mix([62,124,210],[14,22,96],band/3);} }
     else{ if(t<-4) c=[224,232,248];
       else if(a>0.55) c=mix([120,112,128],[176,176,184],a-0.55);
       else{const dry=clamp(1-moist[i],0,1);let base=mix([96,176,72],[200,168,80],dry);
         if(dry>0.7&&t>22) base=mix(base,[216,176,96],(dry-0.7)/0.3);
         if(t>20&&moist[i]>0.6) base=mix(base,[40,128,48],clamp((t-20)/20,0,1));
         c=mix(base,[24,80,40],clamp(v,0,0.9));} }
-    const tex=(s-0.5)*8;c=[c[0]+tex,c[1]+tex,c[2]+tex];
+    const bay=BAYER4[(y&3)*4+(x&3)]-7.5,tex=(s-0.5)*5+bay*1.8;c=[c[0]+tex,c[1]+tex,c[2]+tex];
     if(cloud[i]>0.2){const cc=clamp((cloud[i]-0.2)*0.85,0,0.55);c=mix(c,[232,238,248],cc);}
     setPx(i,clamp(c[0],0,255)|0,clamp(c[1],0,255)|0,clamp(c[2],0,255)|0);}
   if(G.civ.on) for(const ct of G.civ.cities){const i=idx(ct.x,ct.y),g=clamp(G.civ.tech,0,1);setPx(i,255,clamp(200+g*55,0,255)|0,clamp(80+g*100,0,255)|0);}
@@ -660,9 +694,36 @@ function updateUI(){
   document.getElementById('v-life').innerHTML=(G.biomass*100).toFixed(0)+'<small>%</small>';
   document.getElementById('enFill').style.width=(G.energy/G.energyMax*100)+'%';
   document.getElementById('enNum').textContent=Math.floor(G.energy);
+  updateBiowin();
   if(monOpen)updateMonitors();}
 const toastEl=document.getElementById('toast');let toastT=0;
 function toast(m){toastEl.textContent=m;toastEl.style.opacity=1;clearTimeout(toastT);toastT=setTimeout(()=>toastEl.style.opacity=0,2600);}
+
+const evoEl=document.getElementById('evo'),flashEl=document.getElementById('flash');let evoT=0;
+function milestone(c,banner){
+  const col=LIFE_COLORS[c]||[255,225,77],rgb=`rgb(${col[0]},${col[1]},${col[2]})`;
+  evoEl.style.setProperty('--fam',rgb);
+  evoEl.innerHTML=`<div class="et">★ ${banner||'NEW LIFEFORM'} ★</div>`+
+    `<div class="ei">${CLASS_ICON[c]||'✶'}</div>`+
+    `<div class="en">${CLASSES[c].toUpperCase()}</div>`+
+    `<div class="ed">${CLASS_DESC[c]}</div>`+
+    `<div class="ee">${eraName()} ERA</div>`;
+  evoEl.classList.add('show');
+  flashEl.classList.remove('go');void flashEl.offsetWidth;flashEl.classList.add('go');
+  clearTimeout(evoT);evoT=setTimeout(()=>evoEl.classList.remove('show'),3800);
+}
+evoEl.addEventListener('click',()=>evoEl.classList.remove('show'));
+
+const biowin=document.getElementById('biowin'),biIc=biowin.querySelector('.bi'),biBx=biowin.querySelector('.bx');
+function updateBiowin(){
+  let top=0;for(let i=0;i<N;i++) if(bio[i]>0.05&&lcl[i]>top) top=lcl[i];
+  if(G.civ.on) top=10;
+  if(top<=0){biowin.style.display='none';return;}
+  biowin.style.display='flex';
+  const b=G.biomass;const status=b>0.4?'Thriving':b>0.2?'Established':b>0.08?'Lightly inhabited':'Sparse';
+  biIc.textContent=CLASS_ICON[top];
+  biBx.innerHTML=`<b>${CLASSES[top]}</b><small>${status}</small>`;
+}
 
 const playBtn=document.getElementById('play');
 playBtn.addEventListener('click',()=>{G.paused=!G.paused;playBtn.textContent=G.paused?'▶':'❚❚';playBtn.classList.toggle('paused',G.paused);});
