@@ -1,0 +1,283 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="GAIA HD">
+<meta name="theme-color" content="#08081c">
+<title>GAIA — the living planet (iPad)</title>
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" type="image/png" sizes="32x32" href="../icons/favicon-32.png">
+<link rel="apple-touch-icon" href="../icons/apple-touch-icon.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&family=VT323&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --void:#08081c;--panel:#26264e;--panel2:#1a1a3a;--hi:#5a5aa6;--lo:#0a0a22;--lcd:#0c0c1e;
+    --yellow:#ffe14d;--cyan:#54ffff;--green:#5dff67;--red:#ff5d52;--magenta:#ff6fe0;
+    --txt:#eaeaff;--txt-dim:#9a9ada;--txt-faint:#5c5c92;
+  }
+  *{box-sizing:border-box;-webkit-tap-highlight-color:transparent;margin:0;padding:0;}
+  html,body{height:100%;overflow:hidden;background:var(--void);color:var(--txt);
+    font-family:"VT323",ui-monospace,monospace;font-size:20px;line-height:1;
+    -webkit-user-select:none;user-select:none;touch-action:none;image-rendering:pixelated;}
+  .ps{font-family:"Press Start 2P",monospace;}
+
+  /* ===== LANDSCAPE 3-COLUMN LAYOUT ===== */
+  #app{position:fixed;inset:0;display:flex;gap:6px;padding:6px;
+    padding-top:calc(6px + env(safe-area-inset-top));
+    padding-left:calc(6px + env(safe-area-inset-left));
+    padding-right:calc(6px + env(safe-area-inset-right));
+    padding-bottom:calc(6px + env(safe-area-inset-bottom));background:var(--void);}
+
+  /* LEFT RAIL — brand, transport, tools */
+  #rail{flex:0 0 200px;display:flex;flex-direction:column;gap:6px;min-height:0;}
+  #brand{flex:0 0 auto;text-align:center;color:var(--cyan);font-size:11px;letter-spacing:.04em;
+    background:var(--panel);padding:11px 6px;text-shadow:1px 1px 0 var(--lo);box-shadow:inset 2px 2px 0 var(--hi), inset -2px -2px 0 var(--lo);}
+  #brand b{color:var(--yellow);}
+  .transport{flex:0 0 auto;display:flex;align-items:center;gap:5px;background:var(--panel);padding:6px;
+    box-shadow:inset 2px 2px 0 var(--hi), inset -2px -2px 0 var(--lo);}
+  .btn{background:var(--panel);color:var(--txt);border:0;height:42px;padding:0 12px;
+    font-family:"VT323",monospace;font-size:22px;display:flex;align-items:center;justify-content:center;gap:6px;
+    box-shadow:inset 2px 2px 0 var(--hi), inset -2px -2px 0 var(--lo);}
+  .btn:active{box-shadow:inset 2px 2px 0 var(--lo), inset -2px -2px 0 var(--hi);}
+  #play{flex:0 0 auto;min-width:54px;color:var(--green);}
+  #play.paused{color:var(--yellow);}
+  .spds{flex:1 1 auto;display:flex;gap:3px;background:var(--lcd);padding:3px;box-shadow:inset 2px 2px 0 var(--lo), inset -2px -2px 0 var(--hi);}
+  .spd{flex:1 1 0;height:34px;background:var(--panel);color:var(--txt-dim);border:0;
+    font-family:"VT323",monospace;font-size:20px;box-shadow:inset 2px 2px 0 var(--hi), inset -2px -2px 0 var(--lo);}
+  .spd.on{background:var(--yellow);color:var(--void);box-shadow:inset 2px 2px 0 var(--lo), inset -2px -2px 0 var(--hi);}
+  #monBtn{display:none;}
+
+  #dock{flex:1 1 auto;display:flex;flex-direction:column;gap:5px;background:var(--panel);padding:6px;
+    overflow-y:auto;scrollbar-width:none;box-shadow:inset 2px 2px 0 var(--hi), inset -2px -2px 0 var(--lo);}
+  #dock::-webkit-scrollbar{display:none;}
+  .tool{flex:0 0 auto;width:100%;display:flex;flex-direction:row;align-items:center;gap:9px;
+    background:var(--panel);color:var(--txt-dim);border:0;padding:8px 10px;position:relative;
+    box-shadow:inset 2px 2px 0 var(--hi), inset -2px -2px 0 var(--lo);}
+  .tool .ic{font-size:24px;line-height:1;flex:0 0 auto;filter:saturate(1.1);}
+  .tool .nm{font-size:18px;letter-spacing:.02em;line-height:1;flex:1 1 auto;text-align:left;}
+  .tool .cost{flex:0 0 auto;font-size:15px;color:var(--yellow);}
+  .tool.on{background:var(--yellow);color:var(--void);box-shadow:inset 2px 2px 0 var(--lo), inset -2px -2px 0 var(--hi);}
+  .tool.on .cost{color:var(--void);}
+  .tool:active{box-shadow:inset 2px 2px 0 var(--lo), inset -2px -2px 0 var(--hi);}
+  #newBtn{flex:0 0 auto;width:100%;}
+
+  /* CENTER — planet + console line */
+  #center{flex:1 1 auto;display:flex;flex-direction:column;gap:6px;min-width:0;min-height:0;}
+  #stage{flex:1 1 auto;position:relative;overflow:hidden;background:#04040e;min-height:0;
+    box-shadow:inset 3px 3px 0 var(--lo), inset -3px -3px 0 var(--hi);}
+  #planet{position:absolute;inset:0;width:100%;height:100%;display:block;image-rendering:pixelated;image-rendering:crisp-edges;}
+  #scan{position:absolute;inset:0;pointer-events:none;opacity:.16;background:repeating-linear-gradient(to bottom,rgba(0,0,0,.5) 0 1px,transparent 1px 3px);}
+  #layers{position:absolute;top:9px;left:9px;z-index:5;display:flex;background:var(--panel);padding:3px;box-shadow:inset 2px 2px 0 var(--hi), inset -2px -2px 0 var(--lo);}
+  .lay{background:var(--panel);color:var(--txt-dim);border:0;height:34px;padding:0 13px;font-family:"VT323",monospace;font-size:19px;letter-spacing:.04em;}
+  .lay.on{background:var(--cyan);color:var(--void);box-shadow:inset 2px 2px 0 var(--lo), inset -2px -2px 0 var(--hi);}
+  #toast{position:absolute;left:50%;bottom:12px;transform:translateX(-50%);z-index:8;background:var(--panel);color:var(--yellow);
+    font-size:20px;padding:9px 16px;box-shadow:inset 2px 2px 0 var(--hi), inset -2px -2px 0 var(--lo);opacity:0;transition:opacity .2s;pointer-events:none;max-width:80%;text-align:center;}
+
+  #lifeKey{position:absolute;left:9px;top:54px;z-index:5;display:none;background:rgba(12,12,30,.82);padding:6px 9px;box-shadow:inset 2px 2px 0 var(--hi), inset -2px -2px 0 var(--lo);}
+  #lifeKey span{display:flex;align-items:center;gap:6px;font-size:17px;color:var(--txt-dim);line-height:1.55;white-space:nowrap;}
+  #lifeKey i{width:12px;height:12px;flex:0 0 auto;display:inline-block;box-shadow:inset 1px 1px 0 rgba(255,255,255,.25);}
+  #lifeKey .empty{color:var(--txt-faint);}
+
+  #faunaBar{position:absolute;left:0;right:0;bottom:0;z-index:7;display:none;gap:6px;justify-content:center;flex-wrap:wrap;
+    padding:7px;background:rgba(20,20,46,.94);box-shadow:inset 0 3px 0 var(--lo);}
+  .fchip{flex:0 0 auto;display:flex;flex-direction:column;align-items:center;gap:3px;position:relative;
+    background:var(--panel);color:var(--txt-dim);border:0;padding:6px 10px 7px;min-width:68px;
+    font-family:"VT323",monospace;box-shadow:inset 2px 2px 0 var(--hi), inset -2px -2px 0 var(--lo);}
+  .fchip i{width:100%;height:6px;display:block;}
+  .fchip .fe{font-size:24px;line-height:1;}
+  .fchip .fn{font-size:16px;line-height:1;letter-spacing:.02em;}
+  .fchip.on{background:var(--cyan);color:var(--void);box-shadow:inset 2px 2px 0 var(--lo), inset -2px -2px 0 var(--hi);}
+
+  #biowin{position:absolute;right:9px;top:9px;z-index:5;display:none;align-items:center;gap:9px;background:rgba(12,12,30,.85);
+    padding:6px 12px 6px 6px;box-shadow:inset 2px 2px 0 var(--hi), inset -2px -2px 0 var(--lo);}
+  #biowin .bi{width:46px;height:46px;display:flex;align-items:center;justify-content:center;font-size:32px;flex:0 0 auto;background:var(--lcd);box-shadow:inset 2px 2px 0 var(--lo), inset -2px -2px 0 var(--hi);}
+  #biowin .bx b{display:block;font-size:21px;color:var(--cyan);line-height:1.05;white-space:nowrap;}
+  #biowin .bx small{font-size:16px;color:var(--txt-dim);letter-spacing:.03em;}
+
+  #flash{position:absolute;inset:0;z-index:14;background:#fff;opacity:0;pointer-events:none;}
+  #flash.go{animation:flashA .5s steps(5,end) 1;}
+  @keyframes flashA{0%{opacity:0}18%{opacity:.4}100%{opacity:0}}
+  #evo{position:absolute;left:50%;top:46%;transform:translate(-50%,-50%) scale(.55);z-index:15;min-width:300px;max-width:70%;
+    background:var(--panel);text-align:center;padding:0 0 18px;opacity:0;pointer-events:none;
+    box-shadow:inset 3px 3px 0 var(--hi), inset -3px -3px 0 var(--lo), 0 0 0 3px var(--void), 9px 9px 0 rgba(0,0,0,.45);
+    transition:opacity .12s steps(2,end), transform .2s steps(4,end);}
+  #evo.show{opacity:1;transform:translate(-50%,-50%) scale(1);pointer-events:auto;}
+  #evo .et{font-family:"Press Start 2P";font-size:11px;color:var(--void);background:var(--fam,#ffe14d);padding:9px 10px;letter-spacing:.05em;}
+  #evo .ei{font-size:62px;line-height:1;margin:18px 0 8px;filter:drop-shadow(2px 2px 0 var(--lo));}
+  #evo .en{font-family:"Press Start 2P";font-size:18px;color:var(--fam,#ffe14d);text-shadow:2px 2px 0 var(--lo);margin-bottom:11px;}
+  #evo .ed{font-size:22px;color:var(--txt-dim);line-height:1.2;padding:0 22px;}
+  #evo .ee{font-size:17px;color:var(--cyan);margin-top:11px;letter-spacing:.1em;}
+
+  #console{flex:0 0 auto;display:flex;align-items:stretch;gap:6px;}
+  #energy{flex:0 0 auto;width:150px;background:var(--lcd);padding:7px 10px;box-shadow:inset 2px 2px 0 var(--lo), inset -2px -2px 0 var(--hi);}
+  #energy .l{font-size:15px;color:var(--txt-faint);line-height:1;}
+  #energy .bar{height:13px;margin-top:5px;background:#000;position:relative;box-shadow:inset 1px 1px 0 var(--lo);}
+  #energy .fill{position:absolute;inset:0;width:50%;background:linear-gradient(var(--yellow),#c9a800);}
+  #energy .n{font-size:15px;color:var(--yellow);margin-top:4px;line-height:1;}
+  #hint{flex:1 1 auto;background:var(--lcd);padding:9px 13px;display:flex;align-items:center;box-shadow:inset 2px 2px 0 var(--lo), inset -2px -2px 0 var(--hi);font-size:21px;color:var(--txt);line-height:1.15;}
+  #hint b{color:var(--cyan);} #hint .hot{color:var(--yellow);}
+
+  /* RIGHT SIDE — readouts + always-on monitors */
+  #side{flex:0 0 366px;display:flex;flex-direction:column;gap:6px;min-height:0;}
+  #readouts{flex:0 0 auto;display:grid;grid-template-columns:1fr 1fr;gap:5px;}
+  .ro{background:var(--lcd);padding:7px 9px 8px;box-shadow:inset 2px 2px 0 var(--lo), inset -2px -2px 0 var(--hi);overflow:hidden;}
+  .ro .l{font-size:15px;color:var(--txt-faint);letter-spacing:.05em;white-space:nowrap;line-height:1;}
+  .ro .v{font-size:28px;margin-top:3px;line-height:.9;white-space:nowrap;text-shadow:0 0 6px currentColor;}
+  .ro .v small{font-size:15px;text-shadow:none;}
+  #ro-era{grid-column:1 / -1;}
+  #ro-era .v{font-size:22px;color:var(--cyan);}
+  #ro-era .clk{font-size:15px;color:var(--txt-dim);margin-top:4px;text-shadow:none;}
+  #v-temp{color:var(--yellow);} #v-co2{color:var(--magenta);} #v-o2{color:var(--cyan);} #v-life{color:var(--green);}
+
+  #monitors{flex:1 1 auto;min-height:0;background:var(--panel);overflow-y:auto;padding:0 12px 14px;
+    box-shadow:inset 2px 2px 0 var(--hi), inset -2px -2px 0 var(--lo);}
+  .mhead{display:flex;align-items:center;justify-content:space-between;padding:11px 0;position:sticky;top:0;background:var(--panel);z-index:1;}
+  .mhead h2{font-family:"Press Start 2P";font-size:12px;color:var(--yellow);}
+  .mhead h2 span{color:var(--cyan);}
+  #monClose{display:none;}
+  .graphs{display:grid;grid-template-columns:1fr 1fr;gap:7px;}
+  .graph{background:var(--lcd);padding:7px 9px 4px;box-shadow:inset 2px 2px 0 var(--lo), inset -2px -2px 0 var(--hi);}
+  .graph .gl{display:flex;justify-content:space-between;align-items:baseline;margin-bottom:3px;}
+  .graph .gt{font-size:15px;color:var(--txt-faint);letter-spacing:.04em;}
+  .graph .gv{font-size:21px;}
+  .graph canvas{width:100%;height:48px;display:block;image-rendering:auto;}
+  .sect{font-size:15px;color:var(--cyan);letter-spacing:.1em;margin:16px 0 7px;border-bottom:2px solid var(--lo);padding-bottom:5px;}
+  #atmoBar{display:flex;height:28px;overflow:hidden;box-shadow:inset 2px 2px 0 var(--lo), inset -2px -2px 0 var(--hi);}
+  #atmoBar div{display:flex;align-items:center;justify-content:center;font-size:14px;color:rgba(0,0,0,.75);overflow:hidden;white-space:nowrap;}
+  .leg{display:flex;flex-wrap:wrap;gap:12px;margin-top:8px;}
+  .leg span{font-size:17px;color:var(--txt-dim);display:flex;align-items:center;gap:5px;}
+  .dot{width:12px;height:12px;display:inline-block;}
+  #ladder{display:flex;flex-direction:column-reverse;gap:2px;}
+  .rung{display:flex;align-items:center;gap:10px;font-size:18px;padding:5px 9px;color:var(--txt-faint);background:var(--lcd);box-shadow:inset 1px 1px 0 var(--lo);}
+  .rung.reached{color:var(--green);}
+  .rung.current{background:var(--green);color:var(--void);}
+  .rung .rn{width:20px;opacity:.7;}
+  #civBox{font-size:19px;color:var(--txt-dim);background:var(--lcd);padding:12px 13px;line-height:1.5;box-shadow:inset 2px 2px 0 var(--lo), inset -2px -2px 0 var(--hi);}
+  #civBox b{color:var(--txt);} #civBox .warn{color:var(--red);} #civBox .good{color:var(--green);}
+
+  /* MODAL */
+  #modal{position:fixed;inset:0;z-index:50;background:rgba(4,4,16,.9);display:flex;align-items:center;justify-content:center;padding:24px;}
+  #modal.hidden{display:none;}
+  .card{width:100%;max-width:560px;background:var(--panel);padding:18px;max-height:92%;overflow-y:auto;-webkit-overflow-scrolling:touch;box-shadow:inset 3px 3px 0 var(--hi), inset -3px -3px 0 var(--lo);}
+  .titlebar{background:var(--cyan);color:var(--void);font-family:"Press Start 2P";font-size:11px;padding:8px 11px;margin:-18px -18px 14px;display:flex;align-items:center;justify-content:space-between;}
+  .titlebar .dotwin{display:flex;gap:4px;}
+  .titlebar .dotwin i{width:12px;height:12px;background:var(--void);display:block;box-shadow:1px 1px 0 rgba(255,255,255,.3);}
+  .card h1{font-family:"Press Start 2P";font-size:22px;line-height:1.2;margin:4px 0 9px;color:var(--yellow);text-shadow:2px 2px 0 var(--lo);}
+  .card .sub{color:var(--txt-dim);font-size:19px;line-height:1.3;margin-bottom:14px;}
+  .scen-t{font-size:16px;color:var(--cyan);letter-spacing:.12em;margin-bottom:8px;}
+  .scen{display:grid;grid-template-columns:1fr 1fr;gap:8px;}
+  .sbtn{text-align:left;background:var(--panel);color:var(--txt);border:0;padding:11px 13px;display:flex;gap:11px;align-items:center;box-shadow:inset 2px 2px 0 var(--hi), inset -2px -2px 0 var(--lo);}
+  .sbtn:active{box-shadow:inset 2px 2px 0 var(--lo), inset -2px -2px 0 var(--hi);}
+  .sbtn .se{font-size:28px;flex:0 0 auto;}
+  .sbtn .sx b{font-size:19px;display:block;color:var(--cyan);line-height:1;}
+  .sbtn .sx small{font-size:15px;color:var(--txt-dim);line-height:1.25;display:block;margin-top:3px;}
+  .legend{grid-column:1 / -1;margin-top:14px;font-size:16px;color:var(--txt-dim);line-height:1.45;background:var(--lcd);padding:12px 13px;box-shadow:inset 2px 2px 0 var(--lo), inset -2px -2px 0 var(--hi);}
+  .legend b{color:var(--yellow);}
+  .scen-wrap{display:grid;grid-template-columns:1fr 1fr;gap:8px;}
+
+  /* Narrow / portrait fallback so it degrades instead of breaking */
+  @media (max-width:840px){
+    #rail{flex-basis:170px;} #side{flex-basis:300px;}
+  }
+</style>
+</head>
+<body class="wide">
+
+<div id="app">
+  <aside id="rail">
+    <div id="brand" class="ps">GAIA <b>CONSOLE</b></div>
+    <div class="transport">
+      <button class="btn" id="play">▶</button>
+      <div class="spds">
+        <button class="spd" data-spd="1">1</button>
+        <button class="spd on" data-spd="2">2</button>
+        <button class="spd" data-spd="3">3</button>
+        <button class="spd" data-spd="4">4</button>
+      </div>
+      <button class="btn" id="monBtn">📊</button>
+    </div>
+    <div id="dock"></div>
+    <button class="btn" id="newBtn">⟲ New world</button>
+  </aside>
+
+  <main id="center">
+    <div id="stage">
+      <canvas id="planet"></canvas>
+      <div id="scan"></div>
+      <div id="layers">
+        <button class="lay on" data-layer="terrain">LAND</button>
+        <button class="lay" data-layer="climate">HEAT</button>
+        <button class="lay" data-layer="life">LIFE</button>
+        <button class="lay" data-layer="air">AIR</button>
+      </div>
+      <div id="biowin"><div class="bi"></div><div class="bx"></div></div>
+      <div id="lifeKey"></div>
+      <div id="flash"></div>
+      <div id="evo"></div>
+      <div id="toast"></div>
+      <div id="faunaBar"></div>
+    </div>
+    <div id="console">
+      <div id="energy">
+        <div class="l">ENERGY</div>
+        <div class="bar"><div class="fill" id="enFill"></div></div>
+        <div class="n" id="enNum">0</div>
+      </div>
+      <div id="hint">Pick a tool, then tap the planet.</div>
+    </div>
+  </main>
+
+  <aside id="side">
+    <div id="readouts">
+      <div class="ro" id="ro-era"><div class="l">ERA</div><div class="v" id="v-era">—</div><div class="clk" id="v-clk">—</div></div>
+      <div class="ro"><div class="l">TEMP</div><div class="v" id="v-temp">—</div></div>
+      <div class="ro"><div class="l">CO₂</div><div class="v" id="v-co2">—</div></div>
+      <div class="ro"><div class="l">O₂</div><div class="v" id="v-o2">—</div></div>
+      <div class="ro"><div class="l">LIFE</div><div class="v" id="v-life">—</div></div>
+    </div>
+
+    <div id="monitors">
+      <div class="mhead"><h2>PLANET <span>MONITORS</span></h2><button class="xbtn" id="monClose">✕</button></div>
+      <div class="graphs">
+        <div class="graph"><div class="gl"><span class="gt">MEAN TEMP °C</span><span class="gv" id="g-temp-v" style="color:var(--yellow)">—</span></div><canvas id="g-temp"></canvas></div>
+        <div class="graph"><div class="gl"><span class="gt">CO₂ ppm</span><span class="gv" id="g-co2-v" style="color:var(--magenta)">—</span></div><canvas id="g-co2"></canvas></div>
+        <div class="graph"><div class="gl"><span class="gt">O₂ %</span><span class="gv" id="g-o2-v" style="color:var(--cyan)">—</span></div><canvas id="g-o2"></canvas></div>
+        <div class="graph"><div class="gl"><span class="gt">BIOMASS</span><span class="gv" id="g-bio-v" style="color:var(--green)">—</span></div><canvas id="g-bio"></canvas></div>
+      </div>
+      <div class="sect">ATMOSPHERE</div>
+      <div id="atmoBar"></div>
+      <div class="leg" id="atmoLeg"></div>
+      <div class="sect">TREE OF LIFE</div>
+      <div id="ladder"></div>
+      <div class="sect">CIVILIZATION</div>
+      <div id="civBox">No sentient life has emerged.</div>
+    </div>
+  </aside>
+</div>
+
+<div id="modal">
+  <div class="card">
+    <div class="titlebar"><span>GAIA.EXE — iPad</span><span class="dotwin"><i></i><i></i><i></i></span></div>
+    <h1>GAIA CONSOLE</h1>
+    <p class="sub">A planet is one living machine. Nudge its rock, air, water and life — then watch the feedback loops fight back. Keep it livable long enough for someone to wake up and look at the stars.</p>
+    <div class="scen-t">► SELECT A WORLD</div>
+    <div class="scen" id="scenList"></div>
+    <div class="legend">
+      <b>HOW IT REGULATES ITSELF</b><br>
+      • CO₂ &amp; methane trap heat; ice &amp; clouds bounce it away.<br>
+      • Warm wet rock scrubs CO₂ — the planet's own thermostat.<br>
+      • Life eats CO₂, breathes out O₂; enough O₂ unlocks animals &amp; land.<br>
+      • Push too far either way → a frozen snowball or a boiled Venus.
+    </div>
+  </div>
+</div>
+
+<script src="../game.js"></script>
+</body>
+</html>
