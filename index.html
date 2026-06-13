@@ -323,6 +323,9 @@ const TECH_AGES=["Stone","Bronze","Iron","Industrial","Atomic","Information","Na
 
 /* per-class emoji, used on the evolution milestone card & biome portrait */
 const CLASS_ICON=["·","🦠","🧫","🪼","🦐","🐟","🐸","🦎","🦕","🐘","🧠"];
+/* civilization technophases (SimEarth's seven ages) */
+const TECH_ICON=["🪨","⚒️","⚔️","🏭","☢️","💾","🔬"];
+const TECH_DESC=["stone tools & fire","farms & bronze","iron, sail & empire","fossil fuel & smoke","atoms split — power & peril","computers & networks","molecular machines reach for space"];
 
 /* per-class O₂ floor (%), indexed by life class */
 const O2_NEED=[0,0,1,3,6,8,10,12,14,16,18];
@@ -371,7 +374,8 @@ const TOOLS=[
 let G;
 function freshGlobal(){return{t:0,paused:true,speed:2,solar:0.72,avgTemp:14,co2:320,ch4:0,o2:1,albedo:0.30,
   seaLevel:0,biomass:0,iceFrac:0,maxClass:0,abiogenesis:false,energy:60,energyMax:120,
-  civ:{on:false,tech:0,pop:0,pollution:0,mood:1,cities:[],age:0,exodus:false,collapsed:0},
+  preserve:false,
+  civ:{on:false,tech:0,pop:0,pollution:0,mood:1,cities:[],age:0,lastAge:0,exodus:false,collapsed:0},
   log:{temp:[],co2:[],o2:[],bio:[]},logTick:0,layer:"terrain",tool:"inspect",faunaPick:"fish",started:false,scenario:""};}
 
 const SCENARIOS={
@@ -442,8 +446,8 @@ function climateStep(dt){
   const photo=G.biomass*dt*0.018,resp=G.biomass*dt*0.004;
   G.co2+=volc-weather-photo*1.1+resp; G.o2+=photo*0.42-resp*0.3;
   if(G.civ.on){
-    if(G.civ.age>=3&&G.civ.age<=4){G.co2+=G.civ.pop*G.civ.tech*dt*0.9;G.ch4+=G.civ.pop*dt*0.000015;}
-    if(G.civ.age>=5){G.co2-=G.civ.pop*dt*0.25;G.ch4-=G.ch4*0.002*dt;}
+    if(G.civ.age>=3&&G.civ.age<=4){G.co2+=G.civ.pop*G.civ.tech*dt*0.16;G.ch4+=G.civ.pop*dt*0.000005;}
+    if(G.civ.age>=5){G.co2+=(300-G.co2)*0.004*dt;G.ch4-=G.ch4*0.003*dt;}  // clean tech relaxes CO₂ toward ~300, never into a snowball
   }
   if(G.biomass<0.001) G.o2-=G.o2*0.001*dt;
   G.ch4=clamp(G.ch4-G.ch4*0.0008*dt,0,3); G.co2=clamp(G.co2,0.2,200000); G.o2=clamp(G.o2,0,35);
@@ -488,28 +492,38 @@ function sumBio(){let s=0;for(let i=0;i<N;i++) s+=bio[i];return s/N;}
 function announceClass(c){if(c<=lastClass)return;lastClass=c;milestone(c);if(c===10)maybeStartCiv();}
 function maybeStartCiv(){if(G.civ.on)return;
   for(let i=0;i<N;i++) if(lcl[i]>=10&&alt[i]>=G.seaLevel&&temp[i]>0&&temp[i]<35){
-    G.civ.on=true;G.civ.tech=0;G.civ.pop=0.04;G.civ.age=0;G.civ.mood=1;G.civ.cities=[{x:i%W,y:(i/W)|0}];
-    toast("A sentient species awakens. Civilization begins.");return;}}
+    const c=G.civ;c.on=true;c.tech=0;c.pop=0.04;c.age=0;c.lastAge=0;c.mood=1;c.pollution=0;c.exodus=false;c.collapsed=0;c.cities=[{x:i%W,y:(i/W)|0}];
+    toast("Civilization begins — the first cities rise");return;}}
+function civDepart(tag,icon,title,sub){
+  const c=G.civ;
+  showMilestone(tag,icon,title,sub,clockStr(),'rgb(120,200,255)');
+  for(let i=0;i<N;i++) if(lcl[i]>=10) lcl[i]=9;       // sentients gone; their wild kin remain
+  G.maxClass=9;lastClass=9;
+  c.on=false;c.cities=[];c.pop=0;c.tech=0;c.age=0;c.lastAge=0;c.pollution=0;c.collapsed=0;
+}
 function civStep(dt){
   if(!G.civ.on)return; const c=G.civ;
   const stress=clamp(Math.abs(G.avgTemp-15)/30,0,1.4);
   c.mood+=((1-stress)-c.mood)*0.02*dt;c.mood=clamp(c.mood,0,1.2);
   const habLand=clamp(landFrac*2,0,1)*clamp((G.o2-12)/10,0,1);
-  c.pop+=(habLand*c.mood*0.012*(0.3+c.tech)-0.002*stress)*dt;c.pop=clamp(c.pop,0,6);
-  c.tech+=(0.0006+c.pop*0.0007)*c.mood*dt;c.tech=clamp(c.tech,0,1);
+  c.pop+=(habLand*c.mood*0.010*(0.3+c.tech)-0.002*stress)*dt;c.pop=clamp(c.pop,0,6);
+  // technophases advance slowly — a steady multi-minute arc through the seven ages
+  c.tech+=(0.00018+c.pop*0.00003)*c.mood*dt;c.tech=clamp(c.tech,0,1);
   c.age=Math.min(TECH_AGES.length-1,Math.floor(c.tech*TECH_AGES.length));
-  if(c.age>=3&&c.age<=4) c.pollution+=c.pop*0.01*dt; else c.pollution-=c.pollution*0.01*dt;
+  if(c.age>c.lastAge){c.lastAge=c.age;civMilestone(c.age);}
+  if(c.age>=3&&c.age<=4) c.pollution+=c.pop*0.008*dt; else c.pollution-=c.pollution*0.012*dt;
   c.pollution=clamp(c.pollution,0,3);
-  if(c.pollution>0.4||G.avgTemp>40) for(let k=0;k<200;k++){const i=(Math.random()*N)|0;if(alt[i]>=0)bio[i]*=0.998;}
-  if(G.avgTemp>52||G.avgTemp<-25||(c.pollution>2&&c.mood<0.2)){
-    if(++c.collapsed>40){toast("Civilization collapses. The planet endures.");
-      c.on=false;c.pop=0;c.tech=0;c.pollution=0;c.collapsed=0;
-      for(let i=0;i<N;i++) if(lcl[i]>=10) lcl[i]=9; G.maxClass=9;lastClass=9;return;}
+  if(G.avgTemp>46) for(let k=0;k<120;k++){const i=(Math.random()*N)|0;if(alt[i]>=0)bio[i]*=0.997;}
+  // EXODUS — past nanotech the cities lift off; the world is left a living preserve
+  if(c.tech>=1&&!c.exodus){c.exodus=true;G.preserve=true;
+    civDepart('EXODUS','🚀','TO THE STARS','The cities lift off — the world is left a living preserve.');return;}
+  // COLLAPSE — runaway climate ends the civilization, but life endures
+  if(G.avgTemp>54||G.avgTemp<-28||(c.pollution>2.4&&c.mood<0.18)){
+    if(++c.collapsed>60){civDepart('COLLAPSE','💀','CIVILIZATION FALLS','The cities go dark — but the planet endures.');return;}
   } else c.collapsed=Math.max(0,c.collapsed-1);
-  if(c.tech>=0.999&&!c.exodus){c.exodus=true;toast("★ EXODUS — your species reaches for the stars.");}
 }
 function tick(dt){G.t+=dt;climateStep(dt);cloudStep(dt);lifeStep(dt);civStep(dt);
-  G.energy=clamp(G.energy+0.06*dt,0,G.energyMax);
+  G.energy=clamp(G.energy+0.30*dt,0,G.energyMax);
   G.logTick+=dt;if(G.logTick>=4){pushLog();G.logTick=0;}}
 function pushLog(){const L=G.log,cap=120;
   L.temp.push(G.avgTemp);L.co2.push(G.co2);L.o2.push(G.o2);L.bio.push(G.biomass);
@@ -700,18 +714,17 @@ const toastEl=document.getElementById('toast');let toastT=0;
 function toast(m){toastEl.textContent=m;toastEl.style.opacity=1;clearTimeout(toastT);toastT=setTimeout(()=>toastEl.style.opacity=0,2600);}
 
 const evoEl=document.getElementById('evo'),flashEl=document.getElementById('flash');let evoT=0;
-function milestone(c,banner){
-  const col=LIFE_COLORS[c]||[255,225,77],rgb=`rgb(${col[0]},${col[1]},${col[2]})`;
+function showMilestone(tag,icon,title,sub,foot,rgb){
   evoEl.style.setProperty('--fam',rgb);
-  evoEl.innerHTML=`<div class="et">★ ${banner||'NEW LIFEFORM'} ★</div>`+
-    `<div class="ei">${CLASS_ICON[c]||'✶'}</div>`+
-    `<div class="en">${CLASSES[c].toUpperCase()}</div>`+
-    `<div class="ed">${CLASS_DESC[c]}</div>`+
-    `<div class="ee">${eraName()} ERA</div>`;
+  evoEl.innerHTML=`<div class="et">★ ${tag} ★</div><div class="ei">${icon}</div>`+
+    `<div class="en">${title}</div><div class="ed">${sub}</div><div class="ee">${foot}</div>`;
   evoEl.classList.add('show');
   flashEl.classList.remove('go');void flashEl.offsetWidth;flashEl.classList.add('go');
   clearTimeout(evoT);evoT=setTimeout(()=>evoEl.classList.remove('show'),3800);
 }
+function milestone(c,banner){const col=LIFE_COLORS[c]||[255,225,77];
+  showMilestone(banner||'NEW LIFEFORM',CLASS_ICON[c]||'✶',CLASSES[c].toUpperCase(),CLASS_DESC[c],eraName()+' ERA',`rgb(${col[0]},${col[1]},${col[2]})`);}
+function civMilestone(age){showMilestone('CIVILIZATION',TECH_ICON[age],TECH_AGES[age].toUpperCase()+' AGE',TECH_DESC[age],clockStr(),'rgb(120,200,255)');}
 evoEl.addEventListener('click',()=>evoEl.classList.remove('show'));
 
 const biowin=document.getElementById('biowin'),biIc=biowin.querySelector('.bi'),biBx=biowin.querySelector('.bx');
@@ -763,11 +776,17 @@ function updateMonitors(){
       (c.exodus?'<span class="good">★ Exodus achieved — they have left for the stars.</span>':(c.age>=3&&c.age<=4?'<span class="warn">⚠ Industrial carbon is heating the world.</span>':'Watch the carbon and the thermometer.'));}
 }
 
-let lastT=0,frameUI=0;
-function loop(ts){requestAnimationFrame(loop);if(!G||!G.started)return;
-  const real=Math.min(0.05,(ts-lastT)/1000||0);lastT=ts;
-  if(!G.paused){for(let s=0;s<G.speed;s++)tick(1.0);render();}
-  frameUI+=real;if(frameUI>0.08){updateUI();frameUI=0;}}
+let lastT=0,frameUI=0,simAcc=0;
+const BASE_TPS=12,MAX_STEPS=14;   // fixed-timestep sim, framerate-independent
+function loop(ts){requestAnimationFrame(loop);if(!G||!G.started){lastT=ts;return;}
+  const real=Math.min(0.1,(ts-lastT)/1000||0);lastT=ts;
+  if(!G.paused){
+    simAcc+=real*BASE_TPS*G.speed;
+    let steps=simAcc|0;
+    if(steps>0){simAcc-=steps;if(steps>MAX_STEPS)steps=MAX_STEPS;
+      for(let s=0;s<steps;s++)tick(1.0);render();}
+  }
+  frameUI+=real;if(frameUI>0.1){updateUI();frameUI=0;}}
 requestAnimationFrame(loop);
 
 const modal=document.getElementById('modal'),scenList=document.getElementById('scenList');
