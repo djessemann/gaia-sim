@@ -1,0 +1,25 @@
+{
+  "name": "GAIA — a living planet",
+  "short_name": "GAIA",
+  "description": "A self-contained pixel-art living planet you can watch in the browser.",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#08081c",
+  "theme_color": "#08081c",
+  "icons": [
+    {
+      "src": "icons/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "icons/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ]
+}
