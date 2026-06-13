@@ -8,7 +8,7 @@ chunky pixels stay crisp at every output size. No third-party deps.
 import zlib, struct, math
 
 G = 16            # logical grid (the "8-bit" resolution)
-R = 6.3           # globe radius in grid units (leaves a maskable safe margin)
+R = 8.0           # globe radius in grid units (fills the whole tile, edge to edge)
 CX = CY = 8.0     # globe centre
 
 # palette ---------------------------------------------------------------
@@ -53,8 +53,8 @@ def logical_grid():
                 if (nx - bx) ** 2 + (ny - by) ** 2 <= br * br:
                     col = LAND
                     break
-            # ice caps
-            if ny < -0.80 or ny > 0.82:
+            # ice caps (small, near the poles)
+            if ny < -0.86 or ny > 0.86:
                 col = ICE
             # shaded rim on the lower-right for a 3D feel
             if d2 > 0.74 and (nx + ny) > 0.25:
