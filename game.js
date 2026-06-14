@@ -216,7 +216,6 @@ function civStep(dt){
   } else c.collapsed=Math.max(0,c.collapsed-1);
 }
 function tick(dt){G.t+=dt;climateStep(dt);cloudStep(dt);lifeStep(dt);civStep(dt);
-  G.energy=clamp(G.energy+0.30*dt,0,G.energyMax);
   G.logTick+=dt;if(G.logTick>=4){pushLog();G.logTick=0;}}
 function pushLog(){const L=G.log,cap=120;
   L.temp.push(G.avgTemp);L.co2.push(G.co2);L.o2.push(G.o2);L.bio.push(G.biomass);
@@ -470,11 +469,21 @@ function updateMonitors(){
 }
 
 let lastT=0,frameUI=0,simAcc=0;
-const BASE_TPS=12,MAX_STEPS=14;   // fixed-timestep sim, framerate-independent
+const MAX_STEPS=10,ENERGY_PER_SEC=6;
+/* Adaptive pace, like SimEarth: the lifeless GEOLOGIC era flies by ("millions of
+   years in seconds"), then EVOLUTION and CIVILIZATION run slow & contemplative.
+   Values are base ticks/second at speed ×1; the speed buttons multiply them. */
+const TPS_GEOLOGIC=11, TPS_LIFE_EARLY=4.5, TPS_LIFE_LATE=2.4, TPS_CIV=4.5;
+function simRate(){
+  if(G.civ.on) return TPS_CIV;                  // years matter — slowest
+  if(!G.abiogenesis) return TPS_GEOLOGIC;        // pre-life — fastest
+  return lerp(TPS_LIFE_EARLY,TPS_LIFE_LATE,clamp(G.maxClass/10,0,1)); // life: slows as it grows complex
+}
 function loop(ts){requestAnimationFrame(loop);if(!G||!G.started){lastT=ts;return;}
   const real=Math.min(0.1,(ts-lastT)/1000||0);lastT=ts;
   if(!G.paused){
-    simAcc+=real*BASE_TPS*G.speed;
+    G.energy=clamp(G.energy+real*ENERGY_PER_SEC,0,G.energyMax);  // real-time, independent of sim pace
+    simAcc+=real*simRate()*G.speed;
     let steps=simAcc|0;
     if(steps>0){simAcc-=steps;if(steps>MAX_STEPS)steps=MAX_STEPS;
       for(let s=0;s<steps;s++)tick(1.0);render();}
