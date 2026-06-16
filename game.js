@@ -72,15 +72,15 @@ function freshGlobal(){return{t:0,paused:true,speed:2,solar:0.72,avgTemp:14,co2:
   log:{temp:[],co2:[],o2:[],bio:[]},logTick:0,layer:"terrain",tool:"inspect",faunaPick:"fish",started:false,scenario:""};}
 
 const SCENARIOS={
-  genesis:{emoji:"🌑",name:"Genesis Earth",desc:"4.5 billion years ago. Hot young rock, thick CO₂ skies, a dim sun. Grow life from nothing.",
+  genesis:{emoji:"🌑",name:"Genesis Earth",desc:"Hot young rock under a dim sun",
     init(){G.solar=0.72;G.co2=4200;G.ch4=0.4;G.o2=0.2;G.avgTemp=42;makeTerrain(0.40,1.0);}},
-  aqua:{emoji:"🌊",name:"Aquaria",desc:"A drowned world — almost all ocean. Mild and wet. Life comes easy; dry land is the prize.",
+  aqua:{emoji:"🌊",name:"Aquaria",desc:"A warm world of endless ocean",
     init(){G.solar=0.92;G.co2=380;G.ch4=0.02;G.o2=2;G.avgTemp=18;makeTerrain(0.18,0.7);}},
-  mars:{emoji:"🔴",name:"Cold Mars",desc:"A frozen desert with thin, starved air. Trap heat and thaw it before life will take.",
+  mars:{emoji:"🔴",name:"Cold Mars",desc:"A frozen desert with thin air",
     init(){G.solar=0.62;G.co2=90;G.ch4=0;G.o2=0.1;G.avgTemp=-48;makeTerrain(0.62,1.1);}},
-  garden:{emoji:"🌍",name:"Living Earth",desc:"A blue marble already full of mammals. Skip ahead and shepherd a civilization — or wreck it.",
+  garden:{emoji:"🌍",name:"Living Earth",desc:"A living blue marble",
     init(){G.solar=0.96;G.co2=300;G.ch4=0.03;G.o2=20.9;G.avgTemp=15;makeTerrain(0.34,0.85);seedLifeEverywhere(9);}},
-  random:{emoji:"🎲",name:"Wildcard",desc:"Roll a planet. Random seas, gases and sun — from snowball to hothouse. Survive it.",
+  random:{emoji:"🎲",name:"Wildcard",desc:"A random, untested world",
     init(){G.solar=rand(1.05,0.65);G.co2=rand(3000,120);G.ch4=rand(0.4,0);G.o2=rand(4,0.2);G.avgTemp=rand(45,-40);makeTerrain(rand(0.55,0.20),rand(1.1,0.6));}}
 };
 
