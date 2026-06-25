@@ -8,7 +8,7 @@ chunky pixels stay crisp at every output size. No third-party deps.
 import zlib, struct, math
 
 G = 16            # logical grid (the "8-bit" resolution)
-R = 8.0           # globe radius in grid units (fills the whole tile, edge to edge)
+R = 6.2           # globe radius in grid units (leaves a ring of space around it)
 CX = CY = 8.0     # globe centre
 
 # palette ---------------------------------------------------------------
