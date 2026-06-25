@@ -268,15 +268,96 @@ function updateLifeKey(){const key=document.getElementById('lifeKey');
 function renderAir(){for(let i=0;i<N;i++){const cl=cloud[i],m=moist[i];
   const base=alt[i]<G.seaLevel?[16,28,72]:[40,40,56];let c=mix(base,[96,144,200],clamp(m*0.5,0,0.5));c=mix(c,[240,244,252],clamp(cl,0,0.9));
   setPx(i,c[0]|0,c[1]|0,c[2]|0);}}
+
+/* ===== CLOSE-UP TILE DETAIL =====
+   At native resolution every cell is one flat pixel; zoomed in that's a big
+   blank block. When the on-screen cell grows past DETAIL_MIN we stamp a small,
+   abstract motif over each visible terrain tile so it reads as what it is —
+   waves, grass blades, tree clumps, a snow-capped peak, dunes, ice floes.
+   It fades in with zoom and is skipped entirely when zoomed out (cheap + clean). */
+const DETAIL_MIN=15;
+function terrainCat(i){
+  if(alt[i]<G.seaLevel) return temp[i]<-2?'seaice':'ocean';
+  if(temp[i]<-4) return 'glacier';
+  if(alt[i]>0.55) return 'mountain';
+  const m=moist[i],t=temp[i];
+  if(m<0.3&&t>22) return 'desert';
+  if(t>20&&m>0.6) return 'jungle';
+  if(m>0.45) return 'forest';
+  return 'grass';
+}
+function stampCell(i,sx,sy,w,h){
+  const j=seed[i],cat=terrainCat(i);
+  const R=(fx,fy,fw,fh,col)=>{pctx.fillStyle=col;
+    pctx.fillRect(Math.round(sx+fx*w),Math.round(sy+fy*h),Math.max(1,Math.round(fw*w)),Math.max(1,Math.round(fh*h)));};
+  switch(cat){
+    case 'ocean':{const c='rgba(176,214,255,0.42)';
+      R(0.10+j*0.12,0.27,0.34,0.05,c);R(0.50,0.56+j*0.10,0.32,0.05,c);R(0.18,0.80,0.26,0.05,'rgba(120,170,235,0.38)');break;}
+    case 'seaice':{const w_='rgba(238,247,255,0.7)';R(0.14,0.16,0.36,0.22,w_);R(0.52,0.50,0.32,0.24,w_);R(0.30,0.60,0.14,0.12,'rgba(150,182,228,0.5)');break;}
+    case 'glacier':{const w_='rgba(245,250,255,0.62)';R(0.10,0.14,0.34,0.20,w_);R(0.50,0.50,0.36,0.22,w_);R(0.42,0.30,0.06,0.42,'rgba(150,182,228,0.5)');break;}
+    case 'mountain':{const X=f=>sx+f*w,Y=f=>sy+f*h,d=(j-0.5)*0.12;   // soft jagged ridge, low contrast
+      const pts=[[0.04,0.64],[0.22,0.40+d],[0.40,0.58],[0.58,0.32-d],[0.76,0.55],[0.96,0.42]];
+      pctx.lineJoin='round';pctx.lineCap='round';
+      pctx.strokeStyle='rgba(92,88,106,0.4)';pctx.lineWidth=Math.max(1.5,h*0.05);
+      pctx.beginPath();pts.forEach((p,k)=>k?pctx.lineTo(X(p[0]),Y(p[1])):pctx.moveTo(X(p[0]),Y(p[1])));pctx.stroke();break;}
+    case 'desert':{const c='rgba(246,224,160,0.48)';
+      R(0.10+j*0.10,0.34,0.44,0.05,c);R(0.40,0.55,0.44,0.05,c);R(0.20,0.74,0.30,0.05,c);break;}
+    case 'jungle':{const c='rgba(12,52,26,0.58)',hl='rgba(120,205,92,0.42)';
+      R(0.14,0.24,0.24,0.28,c);R(0.50,0.32,0.26,0.32,c);R(0.32,0.56,0.24,0.26,c);R(0.64,0.60,0.16,0.20,c);R(0.22,0.28,0.07,0.07,hl);break;}
+    case 'forest':{const c='rgba(20,64,32,0.55)';
+      R(0.16,0.30,0.24,0.28,c);R(0.54,0.40,0.22,0.28,c);R(0.36,0.54,0.22,0.26,c);break;}
+    default:{const c='rgba(26,84,38,0.5)';   // grassland — short blades
+      for(let n=0;n<4;n++) R(0.16+n*0.18+j*0.04,0.46-(n&1)*0.08,0.05,0.34,c);}
+  }
+}
+function drawDetail(left,top,vw,vh,ppcX,ppcY){
+  const cs=Math.min(ppcX,ppcY); if(cs<DETAIL_MIN) return;
+  const alpha=clamp((cs-DETAIL_MIN)/(DETAIL_MIN*0.8),0,1);
+  const x0=Math.floor(left),x1=Math.ceil(left+vw),y0=Math.max(0,Math.floor(top)),y1=Math.min(H,Math.ceil(top+vh));
+  pctx.save();pctx.globalAlpha=alpha;
+  for(let wy=y0;wy<y1;wy++)for(let wx=x0;wx<x1;wx++)
+    stampCell(wy*W+(((wx%W)+W)%W),(wx-left)*ppcX,(wy-top)*ppcY,ppcX,ppcY);
+  pctx.restore();
+}
 function render(){
   if(G.layer==="climate")renderClimate(); else if(G.layer==="life")renderLife(); else if(G.layer==="air")renderAir(); else renderTerrain();
   octx.putImageData(img,0,0); pctx.imageSmoothingEnabled=false;
-  pctx.clearRect(0,0,planet.width,planet.height); pctx.drawImage(off,0,0,W,H,0,0,planet.width,planet.height);
+  pctx.clearRect(0,0,planet.width,planet.height);
+  const pw=planet.width,ph=planet.height,z=cam.zoom,vw=W/z,vh=H/z;
+  const left=cam.cx-vw/2,top=clamp(cam.cy-vh/2,0,Math.max(0,H-vh));
+  const fullW=pw*z,fullH=ph*z,baseX=-left*(pw/vw),baseY=-top*(ph/vh),ppcX=pw/vw,ppcY=ph/vh;
+  // three horizontal copies cover the east/west wrap-around seam
+  for(let ox=-1;ox<=1;ox++) pctx.drawImage(off,0,0,W,H,baseX+ox*fullW,baseY,fullW,fullH);
+  if(G.layer==="terrain") drawDetail(left,top,vw,vh,ppcX,ppcY);
   updateLifeKey();
 }
 function fit(){const r=planet.getBoundingClientRect(),dpr=Math.min(window.devicePixelRatio||1,2);
   planet.width=Math.max(1,Math.round(r.width*dpr));planet.height=Math.max(1,Math.round(r.height*dpr));}
 window.addEventListener('resize',()=>{fit();render();});
+
+/* CAMERA — the viewport into the world. zoom=1 shows the whole planet (the old
+   behavior); higher zoom moves the eye closer. The world wraps horizontally, so
+   the camera pans freely east/west and is clamped north/south. */
+const DEFAULT_ZOOM=3.5,MIN_ZOOM=1,MAX_ZOOM=12;
+const cam={zoom:DEFAULT_ZOOM,cx:W/2,cy:H/2};
+function clampCam(){
+  cam.zoom=clamp(cam.zoom,MIN_ZOOM,MAX_ZOOM);
+  const viewH=H/cam.zoom;
+  cam.cy=clamp(cam.cy,viewH/2,H-viewH/2);
+  cam.cx=((cam.cx%W)+W)%W;
+}
+function resetCam(){cam.zoom=DEFAULT_ZOOM;cam.cx=W/2;cam.cy=H/2;clampCam();}
+/* Zoom by `ratio` while keeping the world point under fractional screen coords
+   (fx,fy) ∈ [0,1] pinned in place — the natural "zoom toward the cursor/pinch". */
+function zoomAt(fx,fy,ratio){
+  const z0=cam.zoom,vw0=W/z0,vh0=H/z0;
+  const left0=cam.cx-vw0/2,top0=clamp(cam.cy-vh0/2,0,Math.max(0,H-vh0));
+  const wx=left0+fx*vw0,wy=top0+fy*vh0;
+  cam.zoom=clamp(z0*ratio,MIN_ZOOM,MAX_ZOOM);
+  const vw1=W/cam.zoom,vh1=H/cam.zoom;
+  cam.cx=wx-fx*vw1+vw1/2;cam.cy=wy-fy*vh1+vh1/2;
+  clampCam();
+}
 
 const dock=document.getElementById('dock'),hintEl=document.getElementById('hint');
 TOOLS.forEach(t=>{const b=document.createElement('button');
@@ -300,8 +381,11 @@ function selectTool(id){G.tool=id;
   if(id==='fauna'){updateFaunaBar();updateHintFauna();}
   else hintEl.innerHTML=TOOLS.find(x=>x.id===id).hint;}
 function cellFromEvent(e){const r=planet.getBoundingClientRect();
-  const cx=(e.touches?e.touches[0].clientX:e.clientX)-r.left,cy=(e.touches?e.touches[0].clientY:e.clientY)-r.top;
-  const x=clamp(Math.floor(cx/r.width*W),0,W-1),y=clamp(Math.floor(cy/r.height*H),0,H-1);
+  const px=(e.touches?e.touches[0].clientX:e.clientX)-r.left,py=(e.touches?e.touches[0].clientY:e.clientY)-r.top;
+  const z=cam.zoom,vw=W/z,vh=H/z;
+  const left=cam.cx-vw/2,top=clamp(cam.cy-vh/2,0,Math.max(0,H-vh));
+  const wx=left+(px/r.width)*vw,wy=top+(py/r.height)*vh;
+  const x=((Math.floor(wx)%W)+W)%W,y=clamp(Math.floor(wy),0,H-1);
   return{x,y,i:idx(x,y)};}
 let applyTimer=0;
 function applyTool(cell,isTap){const{x,y,i}=cell,T=G.tool;
@@ -371,16 +455,43 @@ function inspectCell(i){
   const life=lcl[i]?CLASSES[lcl[i]]+" "+(bio[i]*100|0)+"%":"no life";
   hintEl.innerHTML=`<b>${surf}</b> · ${temp[i].toFixed(0)}°C · ${(moist[i]*100|0)}% wet · ${life}`;}
 
-let drawing=false;
-function pdown(e){e.preventDefault();drawing=true;applyTool(cellFromEvent(e),true);}
-function pmove(e){if(!drawing)return;e.preventDefault();if(G.tool==='inspect'){inspectCell(cellFromEvent(e).i);return;}applyTool(cellFromEvent(e),false);}
-function pup(){drawing=false;}
-planet.addEventListener('touchstart',pdown,{passive:false});
-planet.addEventListener('touchmove',pmove,{passive:false});
-planet.addEventListener('touchend',pup);
+let drawing=false,pendingTap=null;
+/* Survey applies instantly; world-editing tools defer their first hit until a
+   drag or release, so dropping a second finger to pinch never paints a tile. */
+function pdown(e){e.preventDefault();drawing=true;pendingTap=null;
+  if(G&&G.tool==='inspect')applyTool(cellFromEvent(e),true);else pendingTap=cellFromEvent(e);}
+function pmove(e){if(!drawing)return;e.preventDefault();
+  if(G.tool==='inspect'){inspectCell(cellFromEvent(e).i);return;}
+  if(pendingTap){applyTool(pendingTap,true);pendingTap=null;return;}
+  applyTool(cellFromEvent(e),false);}
+function pup(){if(pendingTap){applyTool(pendingTap,true);pendingTap=null;}drawing=false;}
+
+/* Pinch-to-zoom & two-finger pan. */
+let pinch=null;
+function pinchInfo(e){const t0=e.touches[0],t1=e.touches[1],r=planet.getBoundingClientRect();
+  return{dist:Math.hypot(t1.clientX-t0.clientX,t1.clientY-t0.clientY),
+    mx:(t0.clientX+t1.clientX)/2-r.left,my:(t0.clientY+t1.clientY)/2-r.top,rw:r.width,rh:r.height};}
+function touchStart(e){
+  if(e.touches.length>=2){e.preventDefault();drawing=false;pendingTap=null;const p=pinchInfo(e);pinch={dist:p.dist,mx:p.mx,my:p.my};return;}
+  pdown(e);}
+function touchMove(e){
+  if(pinch){e.preventDefault();const p=pinchInfo(e),z=cam.zoom,vw=W/z,vh=H/z;
+    cam.cx-=(p.mx-pinch.mx)/p.rw*vw;cam.cy-=(p.my-pinch.my)/p.rh*vh;          // pan with the midpoint
+    zoomAt(p.mx/p.rw,p.my/p.rh,p.dist/(pinch.dist||p.dist));                  // zoom about the midpoint
+    pinch.dist=p.dist;pinch.mx=p.mx;pinch.my=p.my;render();return;}
+  pmove(e);}
+function touchEnd(e){
+  if(pinch){if(e.touches.length<2)pinch=null;if(e.touches.length===0)drawing=false;return;}
+  pup(e);}
+planet.addEventListener('touchstart',touchStart,{passive:false});
+planet.addEventListener('touchmove',touchMove,{passive:false});
+planet.addEventListener('touchend',touchEnd);
+planet.addEventListener('touchcancel',touchEnd);
 planet.addEventListener('mousedown',pdown);
 planet.addEventListener('mousemove',pmove);
 window.addEventListener('mouseup',pup);
+planet.addEventListener('wheel',e=>{e.preventDefault();const r=planet.getBoundingClientRect();
+  zoomAt((e.clientX-r.left)/r.width,(e.clientY-r.top)/r.height,e.deltaY<0?1.12:1/1.12);render();},{passive:false});
 document.querySelectorAll('.lay').forEach(b=>b.addEventListener('click',()=>{
   G.layer=b.dataset.layer;document.querySelectorAll('.lay').forEach(x=>x.classList.toggle('on',x===b));render();}));
 
@@ -500,7 +611,7 @@ function startGame(key){modal.classList.add('hidden');
   for(let i=0;i<6;i++)climateStep(2);
   G.biomass=sumBio();if(G.maxClass>0)lastClass=G.maxClass;if(G.maxClass>=10)maybeStartCiv();
   G.started=true;G.paused=false;playBtn.textContent='❚❚';playBtn.classList.remove('paused');
-  buildFaunaBar();selectTool('inspect');fit();render();updateUI();
+  buildFaunaBar();selectTool('inspect');fit();resetCam();render();updateUI();
   toast(SCENARIOS[key].name+" loaded — shape your world");}
 
 G=freshGlobal();fit();
