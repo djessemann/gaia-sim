@@ -319,6 +319,31 @@ function drawDetail(left,top,vw,vh,ppcX,ppcY){
     stampCell(wy*W+(((wx%W)+W)%W),(wx-left)*ppcX,(wy-top)*ppcY,ppcX,ppcY);
   pctx.restore();
 }
+/* ===== FAUNA SPRITES =====
+   Scatter the dominant family's emoji over inhabited tiles — SimEarth-style.
+   A cell shows an icon with a probability that rises with its biomass, gated by
+   the cell's fixed seed so the scatter is stable (no shimmer) and organic:
+   dense where life thrives, sparse at the frontier. Grows as life multiplies and
+   spreads through lifeStep. Drawn on the LAND & LIFE maps, fading in with zoom. */
+const FAUNA_MIN=16;
+function fract(v){return v-Math.floor(v);}
+function drawFauna(left,top,vw,vh,ppcX,ppcY){
+  const cs=Math.min(ppcX,ppcY); if(cs<FAUNA_MIN) return;
+  const alpha=clamp((cs-FAUNA_MIN)/(FAUNA_MIN*0.7),0,1);
+  const x0=Math.floor(left),x1=Math.ceil(left+vw),y0=Math.max(0,Math.floor(top)),y1=Math.min(H,Math.ceil(top+vh));
+  pctx.save();pctx.globalAlpha=alpha;
+  pctx.textAlign='center';pctx.textBaseline='middle';
+  pctx.shadowColor='rgba(0,0,0,0.5)';pctx.shadowBlur=Math.max(1,cs*0.1);
+  pctx.font=Math.round(cs*0.8)+'px "Apple Color Emoji","Segoe UI Emoji","Noto Color Emoji",sans-serif';
+  for(let wy=y0;wy<y1;wy++)for(let wx=x0;wx<x1;wx++){
+    const i=wy*W+(((wx%W)+W)%W),k=lcl[i],b=bio[i];
+    if(k<=0||b<=0.06) continue;
+    if(seed[i]>=clamp((b-0.06)/0.55,0,1)*0.55) continue;        // scatter density ∝ biomass
+    const jx=(seed[i]-0.5)*0.32,jy=(fract(seed[i]*7.31)-0.5)*0.32;
+    pctx.fillText(CLASS_ICON[k]||'•',Math.round((wx-left+0.5+jx)*ppcX),Math.round((wy-top+0.5+jy)*ppcY));
+  }
+  pctx.restore();
+}
 function render(){
   if(G.layer==="climate")renderClimate(); else if(G.layer==="life")renderLife(); else if(G.layer==="air")renderAir(); else renderTerrain();
   octx.putImageData(img,0,0); pctx.imageSmoothingEnabled=false;
@@ -328,7 +353,8 @@ function render(){
   const fullW=pw*z,fullH=ph*z,baseX=-left*(pw/vw),baseY=-top*(ph/vh),ppcX=pw/vw,ppcY=ph/vh;
   // three horizontal copies cover the east/west wrap-around seam
   for(let ox=-1;ox<=1;ox++) pctx.drawImage(off,0,0,W,H,baseX+ox*fullW,baseY,fullW,fullH);
-  if(G.layer==="terrain") drawDetail(left,top,vw,vh,ppcX,ppcY);
+  if(G.layer==="terrain"){drawDetail(left,top,vw,vh,ppcX,ppcY);drawFauna(left,top,vw,vh,ppcX,ppcY);}
+  else if(G.layer==="life") drawFauna(left,top,vw,vh,ppcX,ppcY);
   updateLifeKey();
 }
 function fit(){const r=planet.getBoundingClientRect(),dpr=Math.min(window.devicePixelRatio||1,2);
