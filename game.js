@@ -9,10 +9,44 @@ const rand=(a=1,b=0)=>b+Math.random()*(a-b);
 
 const alt=new Float32Array(N),temp=new Float32Array(N),moist=new Float32Array(N);
 const bio=new Float32Array(N),lcl=new Uint8Array(N),cloud=new Float32Array(N),seed=new Float32Array(N);
+/* biome[] — a real, stored biome per tile (Whittaker temp×rainfall classification),
+   the source of truth for albedo, habitability and carbon burial. divers[] — local
+   biodiversity/ecosystem maturity (0..1): raises carrying capacity and resilience. */
+const biome=new Uint8Array(N),divers=new Float32Array(N);
 
 const CLASSES=["Lifeless","Microbes","Eukaryotes","Soft-bodied","Arthropods","Fish","Amphibians","Reptiles","Dinosaurs","Mammals","Sentient"];
 const CLASS_DESC=["sterile rock & sea","first microbial mats","complex cells in the sea","jellies & worms","shelled, jointed life","backbones in the ocean","first lungs on land","scaled colonizers","the great saurians","warm-blooded & clever","tool-makers awaken"];
 const TECH_AGES=["Stone","Bronze","Iron","Industrial","Atomic","Information","Nanotech"];
+
+/* ===== BIOMES (SimEarth-style, placed by a Whittaker temperature × rainfall rule) =====
+   biome index is stored per tile in biome[]. Each carries a clear-sky albedo, a life
+   carrying-capacity, and a carbon-burial factor (wetlands bury the most — coal swamps). */
+const BIOMES   =["Ocean","Sea Ice","Glacier","Tundra","Taiga","Grassland","Desert","Savanna","Forest","Rainforest","Wetland"];
+const BIOME_ALB =[0.07,   0.62,     0.66,     0.20,    0.13,   0.20,       0.32,    0.22,     0.13,    0.10,        0.12    ];
+const BIOME_CAP =[1.00,   0.05,     0.02,     0.25,    0.55,   0.55,       0.12,    0.65,     0.85,    1.00,        0.95    ];
+const BIOME_BURY=[0.35,   0.05,     0.02,     0.10,    0.35,   0.20,       0.02,    0.25,     0.45,    0.70,        1.00    ];
+/* legend swatch colours, aligned to BIOMES, echoing the LAND-map palette */
+const BIOME_COL =[[46,104,190],[200,216,248],[224,232,248],[150,168,150],[44,96,64],[150,180,90],[212,190,112],[196,182,86],[44,116,54],[26,92,46],[70,124,92]];
+const OCEAN=0,SEAICE=1,GLACIER=2,TUNDRA=3,TAIGA=4,GRASS=5,DESERT=6,SAVANNA=7,FOREST=8,RAIN=9,WETLAND=10;
+/* Whittaker-style classifier: cold→ice/tundra/taiga; warm splits by rainfall into
+   desert/grass/savanna/forest/rainforest; very wet lowland→wetland. */
+function classifyBiome(i){
+  if(alt[i]<G.seaLevel) return temp[i]<-2?SEAICE:OCEAN;
+  const t=temp[i],m=moist[i];
+  if(t<-4) return GLACIER;
+  if(t<0)  return TUNDRA;
+  if(t<6)  return TAIGA;
+  if(m>0.82&&alt[i]<0.28&&t>6) return WETLAND;          // waterlogged lowland — coal swamp
+  if(t>=24){                                             // tropical band
+    if(m<0.28) return DESERT;
+    if(m<0.55) return SAVANNA;
+    return RAIN;
+  }
+  // temperate band
+  if(m<0.20) return DESERT;
+  if(m<0.42) return GRASS;
+  return FOREST;
+}
 
 /* per-class emoji, used on the evolution milestone card & biome portrait */
 const CLASS_ICON=["·","🦠","🧫","🪼","🦐","🐟","🐸","🦎","🦕","🐘","🧠"];
@@ -68,6 +102,8 @@ let G;
 function freshGlobal(){return{t:0,paused:true,speed:2,solar:0.72,avgTemp:14,co2:320,ch4:0,o2:1,albedo:0.30,
   seaLevel:0,biomass:0,iceFrac:0,maxClass:0,abiogenesis:false,energy:60,energyMax:120,
   preserve:false,
+  oceanC:16000,buriedC:0,bioProd:1,orogeny:Math.random(),  // carbon reservoirs + migrating mountain-building front
+  driftEnabled:true,
   civ:{on:false,tech:0,pop:0,pollution:0,mood:1,cities:[],age:0,lastAge:0,exodus:false,collapsed:0},
   log:{temp:[],co2:[],o2:[],bio:[]},logTick:0,layer:"terrain",tool:"inspect",faunaPick:"fish",started:false,scenario:""};}
 
@@ -114,16 +150,36 @@ function seedLifeEverywhere(maxc){
 }
 const cosLat=new Float32Array(H);
 for(let y=0;y<H;y++){const lat=(y/(H-1))*Math.PI-Math.PI/2;cosLat[y]=Math.cos(lat);}
+/* rainfall by latitude — the Hadley-cell pattern: a wet equatorial belt (ITCZ), dry
+   subtropical deserts near ±28°, a wetter temperate band near ±55°, dry poles. */
+const rainBelt=new Float32Array(H);
+for(let y=0;y<H;y++){const L=Math.abs((y/(H-1))*180-90);
+  const itcz=0.60*Math.exp(-(((L)/15)**2)),temperate=0.50*Math.exp(-(((L-55)/24)**2));
+  rainBelt[y]=clamp(itcz+temperate+0.28,0,1);}
 
 let landFrac=0.3;
+/* Daisyworld thermostat: living ground shifts its own albedo with temperature —
+   dark (heat-absorbing) when cold, pale (heat-reflecting) when hot — so a vegetated
+   world pushes back against both freezing and cooking. This is SimEarth's Gaia core. */
+function daisyAlbedo(t){return lerp(0.08,0.22,clamp((t-4)/30,0,1));}
+/* biological productivity vs temperature (0..1): a broad comfortable plateau that
+   collapses toward the freezing and boiling extremes. Gates photosynthesis, so carbon
+   drawdown weakens as a world tips out of the habitable band — the Gaia feedback. */
+function bioProd(t){ if(t<=-6||t>=50) return 0; if(t<8) return (t+6)/14; if(t<=30) return 1; return (50-t)/20; }
+let meanBury=0.3;   // biomass-weighted mean burial factor across the biosphere (wetlands high)
 function recomputeAlbedo(){
-  let aSum=0,iceN=0;
-  for(let i=0;i<N;i++){const isOcean=alt[i]<G.seaLevel,t=temp[i];let a;
-    if(t<-2){a=isOcean?0.62:0.66;iceN++;}
-    else if(isOcean){a=0.07;}
-    else{const dry=clamp(1-moist[i],0,1);a=lerp(0.18,0.34,dry);a=lerp(a,0.11,clamp(bio[i],0,1));}
-    a+=cloud[i]*0.22;aSum+=a;}
+  let aSum=0,iceN=0,buryW=0,bioW=0;
+  for(let i=0;i<N;i++){
+    const b=classifyBiome(i);biome[i]=b;
+    const t=temp[i];let a=BIOME_ALB[b];
+    if(b===SEAICE||b===GLACIER) iceN++;
+    else if(b!==OCEAN){                                  // vegetated land: blend toward the Daisyworld value by how alive it is
+      a=lerp(a,daisyAlbedo(t),clamp(bio[i]*0.7,0,0.7));
+    }
+    a+=cloud[i]*0.22;aSum+=a;
+    if(bio[i]>0.02){buryW+=BIOME_BURY[b]*bio[i];bioW+=bio[i];}}
   G.albedo=clamp(aSum/N,0.05,0.85);G.iceFrac=iceN/N;
+  meanBury=bioW>1e-4?buryW/bioW:0.3;
 }
 function climateStep(dt){
   if(!G.civ.on&&G.solar<1.06) G.solar+=0.0000016*dt;
@@ -136,10 +192,22 @@ function climateStep(dt){
   landFrac=0; for(let i=0;i<N;i++) if(alt[i]>=G.seaLevel) landFrac++; landFrac/=N;
   const volc=(0.9+(G.solar<0.85?1.6:0))*dt*0.06;
   const weather=clamp(G.avgTemp-2,0,80)*landFrac*dt*0.010*(G.co2/400);
-  const photo=G.biomass*dt*0.018,resp=G.biomass*dt*0.004;
-  G.co2+=volc-weather-photo*1.1+resp; G.o2+=photo*0.42-resp*0.3;
+  // Gaia: photosynthetic drawdown scales with the temperature-productivity factor
+  const prod=bioProd(G.avgTemp); G.bioProd=prod;
+  const photo=G.biomass*dt*0.018*prod,resp=G.biomass*dt*0.004;
+  // ocean carbon buffer — cold ocean dissolves CO₂, warm ocean outgasses; damps swings
+  const oceanOpen=clamp(1-G.iceFrac,0.04,1),oceanFrac=clamp(1-landFrac,0,1)*oceanOpen; // frozen ocean can't dissolve gas
+  const kSol=clamp(1-(G.avgTemp-15)/80,0.4,1.6);
+  const oceanEq=G.oceanC/(50*kSol),oceanFlux=(G.co2-oceanEq)*0.003*oceanFrac*dt;   // + : atmosphere → ocean
+  // carbon burial — a slice of net productivity is locked into rock (coal/oil/sediment),
+  // returned only slowly by metamorphic outgassing; wetlands bury the most.
+  const burial=Math.max(0,photo-resp)*meanBury*1.2,buriedReturn=G.buriedC*0.000004*dt;
+  G.co2+=volc-weather-photo*1.1+resp-oceanFlux-burial+buriedReturn;
+  G.oceanC=clamp(G.oceanC+oceanFlux,0,5e6); G.buriedC=clamp(G.buriedC+burial-buriedReturn,0,5e6);
+  G.o2+=photo*0.42-resp*0.3;
   if(G.civ.on){
-    if(G.civ.age>=3&&G.civ.age<=4){G.co2+=G.civ.pop*G.civ.tech*dt*0.16;G.ch4+=G.civ.pop*dt*0.000005;}
+    if(G.civ.age>=3&&G.civ.age<=4){const burn=G.civ.pop*G.civ.tech*dt*0.16;
+      G.co2+=burn;G.buriedC=Math.max(0,G.buriedC-burn*4);G.ch4+=G.civ.pop*dt*0.000005;}  // industry burns buried fossil carbon
     if(G.civ.age>=5){G.co2+=(300-G.co2)*0.004*dt;G.ch4-=G.ch4*0.003*dt;}  // clean tech relaxes CO₂ toward ~300, never into a snowball
   }
   if(G.biomass<0.001) G.o2-=G.o2*0.001*dt;
@@ -151,6 +219,39 @@ function climateStep(dt){
 function cloudStep(dt){for(let i=0;i<N;i++){
   const evap=(alt[i]<0&&temp[i]>0)?clamp(temp[i]/40,0,1)*0.04:moist[i]*0.012;
   cloud[i]=clamp(cloud[i]+(evap-cloud[i]*0.05)*dt,0,1);}}
+
+/* HYDROLOGY — land moisture is pulled toward its latitude rainfall belt (warmer air
+   delivers more; high ground sits in rain shadow), then creeps downhill so valleys
+   run wet and uplands dry. Oceans stay saturated. Gentle, so the Rain tool still bites. */
+function hydrologyStep(dt){
+  for(let y=0;y<H;y++){const belt=rainBelt[y];
+    for(let x=0;x<W;x++){const i=y*W+x; if(alt[i]<G.seaLevel){moist[i]=1;continue;}
+      const warmth=clamp(0.55+temp[i]/70,0.4,1.15),shadow=clamp(1-Math.max(0,alt[i])*0.5,0.35,1);
+      const tgt=clamp(belt*warmth*shadow,0,1);
+      moist[i]+=(tgt-moist[i])*0.02*dt;}}
+  for(let k=0;k<700;k++){const i=(Math.random()*N)|0; if(alt[i]<G.seaLevel) continue;
+    const x=i%W,y=(i/W)|0; let lj=-1,la=alt[i];
+    const nb=[idx(x+1,y),idx(x-1,y),idx(x,clamp(y+1,0,H-1)),idx(x,clamp(y-1,0,H-1))];
+    for(const j of nb) if(alt[j]<la){la=alt[j];lj=j;}
+    if(lj>=0){const flow=moist[i]*0.06*dt;moist[i]=clamp(moist[i]-flow,0,1);moist[lj]=clamp(moist[lj]+flow,0,1);}}
+}
+
+/* GEOSPHERE — a living crust. Peaks erode down over geologic time while a slow-migrating
+   orogenic front (a plate-boundary proxy) lifts new mountain belts where it sweeps, and
+   the odd hotspot builds an island and vents CO₂. Settles once civilization arises so it
+   never bulldozes cities. Full differential continental drift is approximated by the
+   migrating front rather than literally sliding landmasses. */
+function tectonicsStep(dt){
+  if(!G.driftEnabled||G.civ.on) return;
+  for(let k=0;k<400;k++){const i=(Math.random()*N)|0,a=alt[i]; if(a>0.2) alt[i]=a-a*0.0006*dt;}   // erosion (peaks fastest)
+  G.orogeny=(G.orogeny+0.00008*dt)%1;
+  const fx=G.orogeny*W;
+  for(let k=0;k<110;k++){const y=(Math.random()*H)|0,x=(((Math.round(fx+(Math.random()*5-2)))%W)+W)%W,i=idx(x,y);
+    if(alt[i]>=G.seaLevel-0.05) alt[i]=clamp(alt[i]+0.016*dt,-1,1);}
+  if(Math.random()<0.004*dt){const i=(Math.random()*N)|0;alt[i]=clamp(alt[i]+0.5,-1,1);
+    for(let d=0;d<4;d++){const j=idx(i%W+(d<2?d*2-1:0),clamp((i/W|0)+(d>=2?d*2-5:0),0,H-1));alt[j]=clamp(alt[j]+0.15,-1,1);}
+    G.co2+=6;}
+}
 
 let lastClass=0;
 function lifeStep(dt){
@@ -167,7 +268,12 @@ function lifeStep(dt){
     if(t<-12||t>78){bio[i]*=0.90;if(bio[i]<0.02){bio[i]=0;lcl[i]=0;}continue;}
     const isLand=alt[i]>=G.seaLevel;
     const habit=isLand?clamp(1-Math.abs(t-20)/45,0,1)*clamp(moist[i]*1.4,0,1)*clamp((o2-2)/8,0,1):clamp(1-Math.abs(t-22)/55,0,1);
-    bio[i]=clamp(bio[i]+(habit*0.06-0.004)*dt,0,1);
+    // ecology: biodiversity matures where life persists, raising the biome's carrying
+    // capacity and slowing decay; growth is logistic toward that ceiling K.
+    divers[i]=clamp(divers[i]+(bio[i]>0.4?0.004:-0.002)*dt,0,1);
+    const K=clamp(BIOME_CAP[biome[i]]*(0.7+0.5*divers[i]),0.05,1);
+    const growth=habit*0.06*(1-bio[i]/K),decay=0.004*(1-0.5*divers[i]);
+    bio[i]=clamp(bio[i]+(growth-decay)*dt,0,1);
     const nx=x+((Math.random()*3|0)-1),ny=clamp(y+((Math.random()*3|0)-1),0,H-1),j=idx(nx,ny);
     const nLand=alt[j]>=G.seaLevel;
     const can=nLand?(o2>2&&temp[j]>-8&&temp[j]<70&&moist[j]>0.05):(temp[j]>-6&&temp[j]<76);
@@ -215,7 +321,7 @@ function civStep(dt){
     if(++c.collapsed>60){civDepart('COLLAPSE','💀','CIVILIZATION FALLS','The cities go dark — but the planet endures.');return;}
   } else c.collapsed=Math.max(0,c.collapsed-1);
 }
-function tick(dt){G.t+=dt;climateStep(dt);cloudStep(dt);lifeStep(dt);civStep(dt);
+function tick(dt){G.t+=dt;climateStep(dt);hydrologyStep(dt);cloudStep(dt);tectonicsStep(dt);lifeStep(dt);civStep(dt);
   G.logTick+=dt;if(G.logTick>=4){pushLog();G.logTick=0;}}
 function pushLog(){const L=G.log,cap=120;
   L.temp.push(G.avgTemp);L.co2.push(G.co2);L.o2.push(G.o2);L.bio.push(G.biomass);
@@ -255,16 +361,29 @@ function renderLife(){for(let i=0;i<N;i++){const v=bio[i],k=lcl[i];let c;
   setPx(i,c[0]|0,c[1]|0,c[2]|0);}
   if(G.civ.on) for(const ct of G.civ.cities) setPx(idx(ct.x,ct.y),255,235,140);}
 let lifeKeySig='';
+/* Map legend, reusing the #lifeKey window: life families on the LIFE map, and now the
+   biomes present on the LAND map (the Whittaker classification made visible). */
 function updateLifeKey(){const key=document.getElementById('lifeKey');
   if(!key)return;
-  if(G.layer!=='life'){if(key.style.display!=='none'){key.style.display='none';lifeKeySig='';}return;}
-  const present=new Array(11).fill(false);
-  for(let i=0;i<N;i++){if(bio[i]>0.05&&lcl[i]>0)present[lcl[i]]=true;}
-  const sig=present.join('');if(sig===lifeKeySig&&key.style.display==='block')return;
-  lifeKeySig=sig;key.style.display='block';
-  let html='';for(let c=10;c>=1;c--){if(!present[c])continue;const col=LIFE_COLORS[c];
-    html+=`<span><i style="background:rgb(${col[0]},${col[1]},${col[2]})"></i>${CLASSES[c]}</span>`;}
-  key.innerHTML=html||'<span class="empty">No life yet</span>';}
+  if(G.layer==='life'){
+    const present=new Array(11).fill(false);
+    for(let i=0;i<N;i++){if(bio[i]>0.05&&lcl[i]>0)present[lcl[i]]=true;}
+    const sig='L'+present.join('');if(sig===lifeKeySig&&key.style.display==='block')return;
+    lifeKeySig=sig;key.style.display='block';
+    let html='';for(let c=10;c>=1;c--){if(!present[c])continue;const col=LIFE_COLORS[c];
+      html+=`<span><i style="background:rgb(${col[0]},${col[1]},${col[2]})"></i>${CLASSES[c]}</span>`;}
+    key.innerHTML=html||'<span class="empty">No life yet</span>';return;
+  }
+  if(G.layer==='terrain'){
+    const present=new Array(BIOMES.length).fill(false);
+    for(let i=0;i<N;i++) present[biome[i]]=true;
+    const sig='B'+present.join('');if(sig===lifeKeySig&&key.style.display==='block')return;
+    lifeKeySig=sig;key.style.display='block';
+    let html='';for(let b=BIOMES.length-1;b>=0;b--){if(!present[b])continue;const col=BIOME_COL[b];
+      html+=`<span><i style="background:rgb(${col[0]},${col[1]},${col[2]})"></i>${BIOMES[b]}</span>`;}
+    key.innerHTML=html;return;
+  }
+  if(key.style.display!=='none'){key.style.display='none';lifeKeySig='';}}
 function renderAir(){for(let i=0;i<N;i++){const cl=cloud[i],m=moist[i];
   const base=alt[i]<G.seaLevel?[16,28,72]:[40,40,56];let c=mix(base,[96,144,200],clamp(m*0.5,0,0.5));c=mix(c,[240,244,252],clamp(cl,0,0.9));
   setPx(i,c[0]|0,c[1]|0,c[2]|0);}}
@@ -276,15 +395,17 @@ function renderAir(){for(let i=0;i<N;i++){const cl=cloud[i],m=moist[i];
    waves, grass blades, tree clumps, a snow-capped peak, dunes, ice floes.
    It fades in with zoom and is skipped entirely when zoomed out (cheap + clean). */
 const DETAIL_MIN=15;
+/* sprite category derived from the stored biome (mountains keyed off altitude) */
 function terrainCat(i){
-  if(alt[i]<G.seaLevel) return temp[i]<-2?'seaice':'ocean';
-  if(temp[i]<-4) return 'glacier';
-  if(alt[i]>0.55) return 'mountain';
-  const m=moist[i],t=temp[i];
-  if(m<0.3&&t>22) return 'desert';
-  if(t>20&&m>0.6) return 'jungle';
-  if(m>0.45) return 'forest';
-  return 'grass';
+  if(alt[i]<G.seaLevel) return biome[i]===SEAICE?'seaice':'ocean';
+  if(alt[i]>0.55&&temp[i]>=-4) return 'mountain';
+  switch(biome[i]){
+    case GLACIER: case TUNDRA: return 'glacier';
+    case DESERT: return 'desert';
+    case RAIN: return 'jungle';
+    case FOREST: case TAIGA: case WETLAND: return 'forest';
+    default: return 'grass';
+  }
 }
 function stampCell(i,sx,sy,w,h){
   const j=seed[i],cat=terrainCat(i);
@@ -477,8 +598,8 @@ function doNurture(cx,cy){const i=idx(cx,cy);
   bio[i]=1;lcl[i]=10;if(!G.civ.on)maybeStartCiv();
   else{G.civ.cities.push({x:cx,y:cy});G.civ.pop=clamp(G.civ.pop+0.3,0,6);toast("A new city rises");}}
 function inspectCell(i){
-  const surf=alt[i]<G.seaLevel?(temp[i]<-2?"Sea ice":"Ocean"):(temp[i]<-4?"Glacier":alt[i]>0.55?"Mountain":moist[i]<0.3&&temp[i]>22?"Desert":temp[i]>20&&moist[i]>0.6?"Rainforest":moist[i]>0.45?"Forest":"Grassland");
-  const life=lcl[i]?CLASSES[lcl[i]]+" "+(bio[i]*100|0)+"%":"no life";
+  const surf=(alt[i]>=G.seaLevel&&alt[i]>0.55&&temp[i]>=-4)?"Mountain":BIOMES[biome[i]];
+  const life=lcl[i]?CLASSES[lcl[i]]+" "+(bio[i]*100|0)+"%"+(divers[i]>0.15?" · biodiv "+(divers[i]*100|0)+"%":""):"no life";
   hintEl.innerHTML=`<b>${surf}</b> · ${temp[i].toFixed(0)}°C · ${(moist[i]*100|0)}% wet · ${life}`;}
 
 let drawing=false,pendingTap=null;
@@ -527,9 +648,12 @@ function eraName(){if(G.civ.on)return"Civ · "+TECH_AGES[G.civ.age];const c=G.ma
   if(c<=1)return"Archean";if(c<=2)return"Proterozoic";if(c<=4)return"Cambrian";
   if(c<=5)return"Paleozoic";if(c<=6)return"Devonian";if(c<=8)return"Mesozoic";return"Cenozoic";}
 function clockStr(){if(G.civ.on)return"Yr "+fmt(2000+G.civ.tech*8000);return clamp(4.5-G.t*0.0016,0,4.6).toFixed(2)+" BYA";}
+/* the sim's time-scale, SimEarth-style: the lifeless world races (Geologic), life is
+   contemplative (Evolution), and history crawls (Civilization). Mirrors simRate(). */
+function timeScaleName(){if(G.civ.on)return"CIVILIZATION";if(!G.abiogenesis)return"GEOLOGIC";return"EVOLUTION";}
 function updateUI(){
   document.getElementById('v-era').textContent=eraName();
-  document.getElementById('v-clk').textContent=clockStr();
+  document.getElementById('v-clk').textContent=timeScaleName()+" · "+clockStr();
   const tt=document.getElementById('v-temp');tt.innerHTML=G.avgTemp.toFixed(0)+'<small>°C</small>';
   tt.style.color=G.avgTemp>40?'var(--red)':G.avgTemp<-5?'var(--cyan)':'var(--yellow)';
   document.getElementById('v-co2').innerHTML=fmt(G.co2)+'<small> ppm</small>';
@@ -634,6 +758,10 @@ Object.entries(SCENARIOS).forEach(([key,s])=>{const b=document.createElement('bu
   b.addEventListener('click',()=>startGame(key));scenList.appendChild(b);});
 function startGame(key){modal.classList.add('hidden');
   G=freshGlobal();G.scenario=key;lastClass=0;SCENARIOS[key].init();
+  // seed the carbon reservoirs near equilibrium with the starting air, and let any
+  // pre-seeded biosphere carry matching biodiversity so a "living" world starts stable.
+  G.oceanC=clamp(G.co2,150,440)*50;G.buriedC=G.o2*400;
+  for(let i=0;i<N;i++) divers[i]=clamp(bio[i]*0.6,0,0.7);
   for(let i=0;i<6;i++)climateStep(2);
   G.biomass=sumBio();if(G.maxClass>0)lastClass=G.maxClass;if(G.maxClass>=10)maybeStartCiv();
   G.started=true;G.paused=false;playBtn.textContent='❚❚';playBtn.classList.remove('paused');
