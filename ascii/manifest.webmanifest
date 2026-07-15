@@ -1,0 +1,14 @@
+{
+  "name": "GAIA TERMINAL — an ASCII living planet",
+  "short_name": "GAIA TTY",
+  "description": "An ASCII-art, CP437/CGA terminal edition of the GAIA living-planet simulator. Touch-first, phone & iPad friendly.",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#05050c",
+  "theme_color": "#05050c",
+  "icons": [
+    { "src": "../icons/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any maskable" },
+    { "src": "../icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any maskable" }
+  ]
+}

@@ -1,0 +1,344 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="GAIA TTY">
+<meta name="theme-color" content="#05050c">
+<title>GAIA TERMINAL — an ASCII living planet</title>
+<meta name="description" content="An ASCII-art, CP437/CGA terminal edition of the GAIA living-planet simulator — terrain, climate, life and civilization evolving in your browser. Touch-first, phone & iPad friendly. No download, no build step.">
+
+<!-- Link preview / social share (Open Graph) -->
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="GAIA">
+<meta property="og:title" content="GAIA TERMINAL — an ASCII living planet">
+<meta property="og:description" content="An ASCII-art, CP437/CGA terminal edition of the GAIA living-planet simulator. Touch-first, phone & iPad friendly.">
+<meta property="og:url" content="https://djessemann.github.io/gaia-sim/ascii/">
+<meta property="og:image" content="https://djessemann.github.io/gaia-sim/icons/og-image.png">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+
+<!-- Link preview / social share (Twitter / X) -->
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="GAIA TERMINAL — an ASCII living planet">
+<meta name="twitter:description" content="An ASCII-art, CP437/CGA terminal edition of the GAIA living-planet simulator.">
+<meta name="twitter:image" content="https://djessemann.github.io/gaia-sim/icons/og-image.png">
+
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" type="image/png" sizes="32x32" href="../icons/favicon-32.png">
+<link rel="icon" type="image/png" sizes="16x16" href="../icons/favicon-16.png">
+<link rel="apple-touch-icon" href="../icons/apple-touch-icon.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&family=VT323&display=swap" rel="stylesheet">
+<style>
+  /* ===== CGA 16-COLOUR TERMINAL PALETTE ===== */
+  :root{
+    --k:#05050c;      /* black  */
+    --blu:#0000aa;    --grn:#00aa00;   --cyn:#00aaaa;   --red:#aa0000;
+    --mag:#aa00aa;    --brn:#aa5500;   --gry:#aaaaaa;   --dgy:#555577;
+    --lbl:#5555ff;    --lgr:#55ff55;   --lcy:#55ffff;   --lrd:#ff5555;
+    --lmg:#ff55ff;    --yel:#ffff55;   --wht:#ffffff;
+    /* semantic aliases */
+    --void:#05050c;   --panel:#0e0e1c;  --panel2:#0a0a16; --lcd:#07070f;
+    --border:#2c2c5a; --border2:#4a4a86;
+    --txt:#c7c7ea;    --txt-dim:#8a8ac4; --txt-faint:#55557c;
+    --cyan:var(--lcy); --yellow:var(--yel); --green:var(--lgr); --red:var(--lrd); --magenta:var(--lmg);
+  }
+  *{box-sizing:border-box;-webkit-tap-highlight-color:transparent;margin:0;padding:0;}
+  html,body{height:100%;overflow:hidden;background:var(--void);color:var(--txt);
+    font-family:"VT323",ui-monospace,monospace;font-size:19px;line-height:1;
+    -webkit-user-select:none;user-select:none;touch-action:none;}
+  .ps{font-family:"Press Start 2P",monospace;}
+  .box{background:var(--panel);border:2px solid var(--border);}
+  .lcd{background:var(--lcd);border:2px solid var(--border);}
+
+  /* ===== GLOBAL FAINT CRT SCANLINE + VIGNETTE ===== */
+  body::after{content:"";position:fixed;inset:0;z-index:100;pointer-events:none;
+    background:repeating-linear-gradient(to bottom,rgba(0,0,0,.22) 0 1px,transparent 1px 3px);
+    opacity:.35;mix-blend-mode:multiply;}
+
+  #app{position:fixed;inset:0;display:flex;flex-direction:column;gap:5px;padding:5px;
+    padding-top:calc(5px + env(safe-area-inset-top));
+    padding-left:calc(5px + env(safe-area-inset-left));
+    padding-right:calc(5px + env(safe-area-inset-right));
+    padding-bottom:calc(5px + env(safe-area-inset-bottom));background:var(--void);}
+
+  /* ===== TOP BAR / RAIL HEAD ===== */
+  #topbar{flex:0 0 auto;display:flex;align-items:center;gap:5px;flex-wrap:wrap;}
+  .btn{background:var(--panel);color:var(--txt);border:2px solid var(--border);height:38px;padding:0 11px;
+    font-family:"VT323",monospace;font-size:20px;display:flex;align-items:center;justify-content:center;gap:5px;}
+  .btn:active{background:var(--border2);color:var(--void);}
+  #play{min-width:48px;color:var(--lgr);}
+  #play.paused{color:var(--yel);}
+  .spds{display:flex;gap:2px;background:var(--lcd);padding:2px;border:2px solid var(--border);}
+  .spd{width:26px;height:32px;background:var(--panel);color:var(--txt-dim);border:0;
+    font-family:"VT323",monospace;font-size:18px;}
+  .spd.on{background:var(--yel);color:var(--void);}
+  #brand{flex:1 1 90px;text-align:center;color:var(--lcy);font-size:9px;letter-spacing:.02em;
+    overflow:hidden;white-space:nowrap;}
+  #brand b{color:var(--yel);}
+
+  /* ===== READOUTS ===== */
+  #readouts{flex:0 0 auto;display:flex;gap:4px;}
+  .ro{flex:1 1 0;min-width:0;background:var(--lcd);border:2px solid var(--border);padding:4px 6px 5px;overflow:hidden;}
+  .ro .l{font-size:12px;color:var(--txt-faint);letter-spacing:.08em;white-space:nowrap;line-height:1;}
+  .ro .v{font-size:22px;margin-top:2px;line-height:.9;white-space:nowrap;text-shadow:0 0 6px currentColor;}
+  .ro .v small{font-size:12px;text-shadow:none;}
+  #ro-era{flex:1.7 1 0;}
+  #ro-era .v{font-size:17px;color:var(--lcy);}
+  #ro-era .clk{font-size:12px;color:var(--txt-dim);margin-top:3px;text-shadow:none;}
+  #v-temp{color:var(--yel);} #v-co2{color:var(--lmg);} #v-o2{color:var(--lcy);} #v-life{color:var(--lgr);}
+
+  /* ===== STAGE (the terminal viewport) ===== */
+  #stage{flex:1 1 auto;position:relative;overflow:hidden;background:var(--k);
+    border:2px solid var(--border2);min-height:0;}
+  #planet{position:absolute;inset:0;width:100%;height:100%;display:block;}
+  #scan{position:absolute;inset:0;pointer-events:none;opacity:.14;
+    background:repeating-linear-gradient(to bottom,rgba(0,0,0,.6) 0 1px,transparent 1px 3px);}
+  #layers{position:absolute;top:6px;left:6px;z-index:5;display:flex;background:var(--panel);border:2px solid var(--border);}
+  .lay{background:var(--panel);color:var(--txt-dim);border:0;height:30px;padding:0 10px;
+    font-family:"VT323",monospace;font-size:16px;letter-spacing:.04em;}
+  .lay.on{background:var(--lcy);color:var(--void);}
+  #toast{position:absolute;left:50%;bottom:10px;transform:translateX(-50%);z-index:6;
+    background:var(--panel);border:2px solid var(--border2);color:var(--yel);font-size:18px;padding:7px 13px;
+    opacity:0;transition:opacity .2s;pointer-events:none;max-width:90%;text-align:center;line-height:1.15;}
+
+  #lifeKey{position:absolute;left:6px;top:44px;z-index:5;display:none;background:rgba(10,10,22,.9);
+    border:2px solid var(--border);padding:5px 8px;max-width:52%;}
+  #lifeKey span{display:flex;align-items:center;gap:6px;font-size:15px;color:var(--txt-dim);line-height:1.55;white-space:nowrap;}
+  #lifeKey i{width:11px;height:11px;flex:0 0 auto;display:inline-block;}
+  #lifeKey .empty{color:var(--txt-faint);}
+
+  #faunaBar{position:absolute;left:0;right:0;bottom:0;z-index:7;display:none;gap:4px;
+    padding:5px 6px;background:rgba(8,8,18,.95);overflow-x:auto;scrollbar-width:none;border-top:2px solid var(--border2);}
+  #faunaBar::-webkit-scrollbar{display:none;}
+  .fchip{flex:0 0 auto;display:flex;flex-direction:column;align-items:center;gap:2px;position:relative;
+    background:var(--panel);color:var(--txt-dim);border:2px solid var(--border);padding:3px 7px 4px;min-width:54px;
+    font-family:"VT323",monospace;}
+  .fchip i{width:100%;height:5px;display:block;}
+  .fchip .fe{font-size:19px;line-height:1;}
+  .fchip .fn{font-size:13px;line-height:1;letter-spacing:.02em;}
+  .fchip.on{background:var(--lcy);color:var(--void);}
+
+  #biowin{position:absolute;right:6px;top:6px;z-index:5;display:none;align-items:center;gap:7px;
+    background:rgba(10,10,22,.9);border:2px solid var(--border);padding:4px 9px 4px 4px;}
+  #biowin .bi{width:36px;height:36px;display:flex;align-items:center;justify-content:center;font-size:24px;flex:0 0 auto;
+    background:var(--lcd);border:2px solid var(--border);}
+  #biowin .bx{min-width:0;}
+  #biowin .bx b{display:block;font-size:16px;color:var(--lcy);line-height:1.05;white-space:nowrap;}
+  #biowin .bx small{font-size:13px;color:var(--txt-dim);letter-spacing:.03em;}
+
+  /* MILESTONE CARD */
+  #flash{position:absolute;inset:0;z-index:14;background:#fff;opacity:0;pointer-events:none;}
+  #flash.go{animation:flashA .5s steps(5,end) 1;}
+  @keyframes flashA{0%{opacity:0}18%{opacity:.4}100%{opacity:0}}
+  #evo{position:absolute;left:50%;top:44%;transform:translate(-50%,-50%) scale(.55);z-index:15;
+    min-width:236px;max-width:88%;background:var(--panel);border:2px solid var(--border2);text-align:center;padding:0 0 13px;
+    opacity:0;pointer-events:none;box-shadow:0 0 0 3px var(--void), 7px 7px 0 rgba(0,0,0,.5);
+    transition:opacity .12s steps(2,end), transform .2s steps(4,end);}
+  #evo.show{opacity:1;transform:translate(-50%,-50%) scale(1);pointer-events:auto;}
+  #evo .et{font-family:"Press Start 2P";font-size:9px;color:var(--void);background:var(--fam,#ffff55);
+    padding:7px 8px;letter-spacing:.05em;}
+  #evo .ei{font-size:44px;line-height:1;margin:13px 0 5px;}
+  #evo .en{font-family:"Press Start 2P";font-size:13px;color:var(--fam,#ffff55);text-shadow:2px 2px 0 var(--k);margin-bottom:8px;letter-spacing:.02em;}
+  #evo .ed{font-size:18px;color:var(--txt-dim);line-height:1.2;padding:0 16px;}
+  #evo .ee{font-size:14px;color:var(--lcy);margin-top:8px;letter-spacing:.1em;}
+
+  /* ===== CONSOLE LINE ===== */
+  #console{flex:0 0 auto;display:flex;align-items:stretch;gap:5px;}
+  #energy{flex:0 0 auto;width:112px;background:var(--lcd);border:2px solid var(--border);padding:4px 7px;}
+  #energy .l{font-size:12px;color:var(--txt-faint);line-height:1;letter-spacing:.08em;}
+  #energy .bar{height:11px;margin-top:4px;background:#000;position:relative;border:1px solid var(--border);}
+  #energy .fill{position:absolute;inset:0;width:50%;background:var(--yel);}
+  #energy .n{font-size:13px;color:var(--yel);margin-top:3px;line-height:1;}
+  #hint{flex:1 1 auto;background:var(--lcd);border:2px solid var(--border);padding:6px 9px;display:flex;align-items:center;
+    font-size:18px;color:var(--txt);line-height:1.1;}
+  #hint b{color:var(--lcy);} #hint .hot{color:var(--yel);}
+
+  /* ===== TOOL DOCK ===== */
+  #dock{flex:0 0 auto;display:flex;gap:4px;overflow-x:auto;scrollbar-width:none;}
+  #dock::-webkit-scrollbar{display:none;}
+  .tool{flex:0 0 auto;width:58px;height:60px;background:var(--panel);border:2px solid var(--border);
+    display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;
+    color:var(--txt-dim);position:relative;}
+  .tool .ic{font-size:21px;line-height:1;}
+  .tool .nm{font-size:13px;letter-spacing:.02em;line-height:1;}
+  .tool .cost{position:absolute;top:1px;right:4px;font-size:12px;color:var(--yel);}
+  .tool.on{background:var(--yel);color:var(--void);border-color:var(--yel);}
+  .tool.on .cost{color:var(--void);}
+  .tool:active{background:var(--border2);color:var(--void);}
+  #newBtn{flex:0 0 auto;}
+
+  /* ===== MONITORS (bottom sheet in narrow, side column in wide) ===== */
+  #monitors{position:fixed;left:0;right:0;bottom:0;z-index:30;background:var(--panel);border-top:2px solid var(--border2);
+    transform:translateY(110%);transition:transform .28s steps(6,end);
+    max-height:84vh;overflow-y:auto;padding:0 12px 16px;padding-bottom:calc(20px + env(safe-area-inset-bottom));}
+  #monitors.open{transform:translateY(0);}
+  .mhead{display:flex;align-items:center;justify-content:space-between;padding:11px 0;position:sticky;top:0;background:var(--panel);z-index:1;}
+  .mhead h2{font-family:"Press Start 2P";font-size:11px;color:var(--yel);}
+  .mhead h2 span{color:var(--lcy);}
+  .xbtn{background:var(--panel);color:var(--txt);border:2px solid var(--border);width:34px;height:34px;font-size:18px;}
+  .graphs{display:grid;grid-template-columns:1fr 1fr;gap:6px;}
+  .graph{background:var(--lcd);border:2px solid var(--border);padding:6px 8px 3px;}
+  .graph .gl{display:flex;justify-content:space-between;align-items:baseline;margin-bottom:2px;}
+  .graph .gt{font-size:13px;color:var(--txt-faint);letter-spacing:.04em;}
+  .graph .gv{font-size:19px;}
+  .graph canvas{width:100%;height:42px;display:block;}
+  .sect{font-size:13px;color:var(--lcy);letter-spacing:.14em;margin:15px 0 7px;border-bottom:2px solid var(--border);padding-bottom:5px;}
+  #atmoBar{display:flex;height:24px;overflow:hidden;border:2px solid var(--border);}
+  #atmoBar div{display:flex;align-items:center;justify-content:center;font-size:12px;color:rgba(0,0,0,.8);overflow:hidden;white-space:nowrap;}
+  .leg{display:flex;flex-wrap:wrap;gap:11px;margin-top:7px;}
+  .leg span{font-size:15px;color:var(--txt-dim);display:flex;align-items:center;gap:5px;}
+  .dot{width:11px;height:11px;display:inline-block;}
+  #ladder{display:flex;flex-direction:column-reverse;gap:2px;}
+  .rung{display:flex;align-items:center;gap:9px;font-size:16px;padding:4px 8px;color:var(--txt-faint);
+    background:var(--lcd);border:1px solid var(--border);}
+  .rung.reached{color:var(--lgr);}
+  .rung.current{background:var(--lgr);color:var(--void);}
+  .rung .rn{width:14px;text-align:center;opacity:.85;}
+  #civBox{font-size:17px;color:var(--txt-dim);background:var(--lcd);border:2px solid var(--border);padding:10px 12px;line-height:1.5;}
+  #civBox b{color:var(--txt);} #civBox .warn{color:var(--lrd);} #civBox .good{color:var(--lgr);}
+
+  /* ===== MODAL ===== */
+  #modal{position:fixed;inset:0;z-index:50;background:rgba(4,4,12,.92);display:flex;align-items:center;justify-content:center;
+    padding:calc(env(safe-area-inset-top) + 10px) 12px calc(env(safe-area-inset-bottom) + 10px);}
+  #modal.hidden{display:none;}
+  .card{width:100%;max-width:460px;background:var(--panel);border:2px solid var(--border2);padding:14px;max-height:100%;overflow-y:auto;-webkit-overflow-scrolling:touch;}
+  .titlebar{background:var(--lcy);color:var(--void);font-family:"Press Start 2P";font-size:10px;
+    padding:6px 9px;margin:-14px -14px 12px;display:flex;align-items:center;justify-content:space-between;}
+  .titlebar .dotwin{display:flex;gap:4px;}
+  .titlebar .dotwin i{width:11px;height:11px;background:var(--void);display:block;}
+  .card .asciiart{font-size:11px;line-height:1.05;color:var(--lgr);white-space:pre;text-align:center;margin:2px 0 10px;letter-spacing:0;overflow:hidden;}
+  .card h1{font-family:"Press Start 2P";font-size:16px;line-height:1.2;margin:2px 0 8px;color:var(--yel);text-shadow:2px 2px 0 var(--k);}
+  .card .sub{font-family:"Press Start 2P";color:var(--txt-dim);font-size:9px;line-height:1.6;margin-bottom:14px;}
+  .scen-t{font-family:"Press Start 2P";font-size:8px;color:var(--lcy);letter-spacing:.06em;margin-bottom:8px;}
+  .scen{display:flex;flex-direction:column;gap:6px;}
+  .sbtn{text-align:left;background:var(--panel);color:var(--txt);border:2px solid var(--border);padding:9px 10px;display:flex;gap:11px;align-items:center;}
+  .sbtn:active{background:var(--border2);color:var(--void);}
+  .sbtn .se{font-size:22px;flex:0 0 auto;}
+  .sbtn .sx b{font-family:"Press Start 2P";font-size:10px;display:block;color:var(--lcy);line-height:1.1;}
+  .sbtn .sx small{font-family:"Press Start 2P";font-size:7px;color:var(--txt-dim);line-height:1.6;display:block;margin-top:6px;letter-spacing:.02em;}
+
+  /* ================= WIDE / iPad LANDSCAPE — three-column console ================= */
+  body.wide #app{display:grid;gap:6px;
+    grid-template-columns:216px 1fr 372px;
+    grid-template-rows:auto 1fr auto;
+    grid-template-areas:
+      "head   stage    ro"
+      "dock   stage    mon"
+      "dock   console  mon";}
+  body.wide #topbar{grid-area:head;align-content:flex-start;background:var(--panel);border:2px solid var(--border);padding:7px;}
+  body.wide #brand{flex-basis:100%;font-size:11px;padding:3px 0 6px;}
+  body.wide #readouts{grid-area:ro;display:grid;grid-template-columns:1fr 1fr;gap:5px;align-content:start;}
+  body.wide #ro-era{grid-column:1 / -1;}
+  body.wide #ro-era .v{font-size:20px;}
+  body.wide .ro .v{font-size:25px;}
+  body.wide #stage{grid-area:stage;}
+  body.wide #console{grid-area:console;}
+  body.wide #dock{grid-area:dock;flex-direction:column;overflow-y:auto;overflow-x:hidden;background:var(--panel);border:2px solid var(--border);padding:6px;gap:5px;}
+  body.wide .tool{width:100%;height:auto;flex-direction:row;justify-content:flex-start;gap:9px;padding:8px 10px;}
+  body.wide .tool .ic{font-size:23px;}
+  body.wide .tool .nm{font-size:17px;flex:1 1 auto;text-align:left;}
+  body.wide .tool .cost{position:static;}
+  body.wide #newBtn{width:100%;margin-top:auto;}
+  body.wide #monBtn{display:none;}
+  body.wide #monitors{grid-area:mon;position:static;transform:none;max-height:none;overflow-y:auto;
+    border:2px solid var(--border);border-top:2px solid var(--border);padding:0 12px 12px;}
+  body.wide #monClose{display:none;}
+  body.wide #faunaBar{justify-content:center;flex-wrap:wrap;}
+  body.wide .card{max-width:560px;}
+  body.wide .scen{display:grid;grid-template-columns:1fr 1fr;}
+</style>
+</head>
+<body>
+<div id="app">
+
+  <div id="topbar">
+    <button class="btn" id="play">▶</button>
+    <div class="spds">
+      <button class="spd" data-spd="1">1</button>
+      <button class="spd on" data-spd="2">2</button>
+      <button class="spd" data-spd="3">3</button>
+      <button class="spd" data-spd="4">4</button>
+    </div>
+    <div id="brand" class="ps">GAIA <b>//TTY</b></div>
+    <button class="btn" id="monBtn">📊</button>
+    <button class="btn" id="newBtn">⟲</button>
+  </div>
+
+  <div id="readouts">
+    <div class="ro" id="ro-era"><div class="l">ERA</div><div class="v" id="v-era">—</div><div class="clk" id="v-clk">—</div></div>
+    <div class="ro"><div class="l">TEMP</div><div class="v" id="v-temp">—</div></div>
+    <div class="ro"><div class="l">CO₂</div><div class="v" id="v-co2">—</div></div>
+    <div class="ro"><div class="l">O₂</div><div class="v" id="v-o2">—</div></div>
+    <div class="ro"><div class="l">LIFE</div><div class="v" id="v-life">—</div></div>
+  </div>
+
+  <div id="stage">
+    <canvas id="planet"></canvas>
+    <div id="scan"></div>
+    <div id="layers">
+      <button class="lay on" data-layer="terrain">LAND</button>
+      <button class="lay" data-layer="climate">HEAT</button>
+      <button class="lay" data-layer="life">LIFE</button>
+      <button class="lay" data-layer="air">AIR</button>
+    </div>
+    <div id="biowin"><div class="bi"></div><div class="bx"></div></div>
+    <div id="lifeKey"></div>
+    <div id="flash"></div>
+    <div id="evo"></div>
+    <div id="toast"></div>
+    <div id="faunaBar"></div>
+  </div>
+
+  <div id="console">
+    <div id="energy">
+      <div class="l">ENERGY</div>
+      <div class="bar"><div class="fill" id="enFill"></div></div>
+      <div class="n" id="enNum">0</div>
+    </div>
+    <div id="hint">Pick a tool below, then tap the planet.</div>
+  </div>
+
+  <div id="dock"></div>
+
+  <div id="monitors">
+  <div class="mhead"><h2>PLANET <span>MONITORS</span></h2><button class="xbtn" id="monClose">✕</button></div>
+  <div class="graphs">
+    <div class="graph"><div class="gl"><span class="gt">MEAN TEMP °C</span><span class="gv" id="g-temp-v" style="color:var(--yel)">—</span></div><canvas id="g-temp"></canvas></div>
+    <div class="graph"><div class="gl"><span class="gt">CO₂ ppm</span><span class="gv" id="g-co2-v" style="color:var(--lmg)">—</span></div><canvas id="g-co2"></canvas></div>
+    <div class="graph"><div class="gl"><span class="gt">O₂ %</span><span class="gv" id="g-o2-v" style="color:var(--lcy)">—</span></div><canvas id="g-o2"></canvas></div>
+    <div class="graph"><div class="gl"><span class="gt">BIOMASS</span><span class="gv" id="g-bio-v" style="color:var(--lgr)">—</span></div><canvas id="g-bio"></canvas></div>
+  </div>
+  <div class="sect">ATMOSPHERE</div>
+  <div id="atmoBar"></div>
+  <div class="leg" id="atmoLeg"></div>
+  <div class="sect">TREE OF LIFE</div>
+  <div id="ladder"></div>
+  <div class="sect">CIVILIZATION</div>
+  <div id="civBox">No sentient life has emerged.</div>
+  </div>
+</div>
+
+<div id="modal">
+  <div class="card">
+    <div class="titlebar"><span>GAIA.SYS — TTY</span><span class="dotwin"><i></i><i></i><i></i></span></div>
+    <div class="asciiart">   .-~~~-.
+  /  ^ ^  \    ~ ~
+ | (  o  ) |  ~ GAIA ~
+  \  ~=~  /    ~ ~
+   `-...-'</div>
+    <h1>GAIA<br>TERMINAL</h1>
+    <p class="sub">A living world in CP437 &amp; sixteen colours.</p>
+    <div class="scen-t">SELECT A SCENARIO</div>
+    <div class="scen" id="scenList"></div>
+  </div>
+</div>
+
+<script src="game.js"></script>
+</body>
+</html>
